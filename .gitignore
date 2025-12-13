@@ -39,3 +39,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+akitaclarkexam-be03f82dcc24.json
+*.json
