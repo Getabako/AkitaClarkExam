@@ -7,14 +7,37 @@ const PARENT_FOLDER_ID = '1fTDO5U57S2POAwOWWhtg8z84e23oL_1W';
 
 function getAuth() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  let privateKey = process.env.GOOGLE_PRIVATE_KEY;
 
   console.log('Service Account Email:', clientEmail ? 'Set' : 'NOT SET');
-  console.log('Private Key:', privateKey ? 'Set (length: ' + privateKey.length + ')' : 'NOT SET');
+  console.log('Private Key raw length:', privateKey?.length);
 
   if (!clientEmail || !privateKey) {
     throw new Error('Missing Google credentials');
   }
+
+  // 様々な形式に対応
+  // 1. ダブルクォートで囲まれている場合は除去
+  if (privateKey.startsWith('"') && privateKey.endsWith('"')) {
+    privateKey = privateKey.slice(1, -1);
+  }
+
+  // 2. リテラルな \n を実際の改行に変換
+  privateKey = privateKey.replace(/\\n/g, '\n');
+
+  // 3. 既に改行が含まれていない場合（1行になっている場合）の対応
+  if (!privateKey.includes('\n')) {
+    // BASE64部分を64文字ごとに改行
+    const header = '-----BEGIN PRIVATE KEY-----';
+    const footer = '-----END PRIVATE KEY-----';
+    if (privateKey.includes(header) && privateKey.includes(footer)) {
+      const base64 = privateKey.replace(header, '').replace(footer, '').replace(/\s/g, '');
+      const chunks = base64.match(/.{1,64}/g) || [];
+      privateKey = `${header}\n${chunks.join('\n')}\n${footer}\n`;
+    }
+  }
+
+  console.log('Private Key processed, starts with:', privateKey.substring(0, 30));
 
   return new google.auth.GoogleAuth({
     credentials: {
