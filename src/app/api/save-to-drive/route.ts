@@ -2,32 +2,47 @@ import { NextRequest, NextResponse } from 'next/server';
 import { google } from 'googleapis';
 import { Readable } from 'stream';
 
-// サービスアカウントの認証情報
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-  },
-  scopes: ['https://www.googleapis.com/auth/drive'],
-});
-
-const drive = google.drive({ version: 'v3', auth });
-
 // 指定のフォルダID
 const PARENT_FOLDER_ID = '1fTDO5U57S2POAwOWWhtg8z84e23oL_1W';
 
-async function findOrCreateFolder(folderName: string): Promise<string> {
+function getAuth() {
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  console.log('Service Account Email:', clientEmail ? 'Set' : 'NOT SET');
+  console.log('Private Key:', privateKey ? 'Set (length: ' + privateKey.length + ')' : 'NOT SET');
+
+  if (!clientEmail || !privateKey) {
+    throw new Error('Missing Google credentials');
+  }
+
+  return new google.auth.GoogleAuth({
+    credentials: {
+      client_email: clientEmail,
+      private_key: privateKey,
+    },
+    scopes: ['https://www.googleapis.com/auth/drive'],
+  });
+}
+
+async function findOrCreateFolder(drive: ReturnType<typeof google.drive>, folderName: string): Promise<string> {
+  console.log('Finding or creating folder:', folderName);
+
   // 既存のフォルダを検索
   const searchResponse = await drive.files.list({
     q: `name='${folderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id, name)',
   });
 
+  console.log('Search response:', JSON.stringify(searchResponse.data));
+
   if (searchResponse.data.files && searchResponse.data.files.length > 0) {
+    console.log('Found existing folder:', searchResponse.data.files[0].id);
     return searchResponse.data.files[0].id!;
   }
 
   // フォルダが存在しない場合は作成
+  console.log('Creating new folder...');
   const createResponse = await drive.files.create({
     requestBody: {
       name: folderName,
@@ -37,15 +52,19 @@ async function findOrCreateFolder(folderName: string): Promise<string> {
     fields: 'id',
   });
 
+  console.log('Created folder:', createResponse.data.id);
   return createResponse.data.id!;
 }
 
 async function uploadFile(
+  drive: ReturnType<typeof google.drive>,
   folderId: string,
   fileName: string,
   content: string | Buffer,
   mimeType: string
 ): Promise<string> {
+  console.log('Uploading file:', fileName, 'to folder:', folderId);
+
   const media = {
     mimeType,
     body: Readable.from(typeof content === 'string' ? Buffer.from(content, 'utf-8') : content),
@@ -60,15 +79,21 @@ async function uploadFile(
     fields: 'id, webViewLink',
   });
 
+  console.log('Uploaded file:', response.data.id);
   return response.data.webViewLink || '';
 }
 
 export async function POST(request: NextRequest) {
   try {
     const { studentName, analysis, imageUrl } = await request.json();
+    console.log('Saving results for:', studentName);
+
+    // 認証を取得
+    const auth = getAuth();
+    const drive = google.drive({ version: 'v3', auth });
 
     // 生徒名のフォルダを作成または取得
-    const folderId = await findOrCreateFolder(studentName);
+    const folderId = await findOrCreateFolder(drive, studentName);
 
     // 分析結果をテキストファイルとして保存
     const timestamp = new Date().toISOString().split('T')[0];
@@ -101,27 +126,30 @@ ${analysis.final || '未実施'}
 ================================================================================
 `;
 
-    await uploadFile(folderId, analysisFileName, analysisContent, 'text/plain');
+    await uploadFile(drive, folderId, analysisFileName, analysisContent, 'text/plain');
 
     // 画像をダウンロードして保存
     if (imageUrl) {
       try {
+        console.log('Downloading image from:', imageUrl);
         const imageResponse = await fetch(imageUrl);
         const imageBuffer = Buffer.from(await imageResponse.arrayBuffer());
-        await uploadFile(folderId, `ビジョン画像_${timestamp}.png`, imageBuffer, 'image/png');
+        await uploadFile(drive, folderId, `ビジョン画像_${timestamp}.png`, imageBuffer, 'image/png');
       } catch (imageError) {
         console.error('Image upload error:', imageError);
       }
     }
 
+    console.log('Successfully saved to Drive');
     return NextResponse.json({
       success: true,
       message: `結果を「${studentName}」フォルダに保存しました`
     });
   } catch (error) {
     console.error('Drive save error:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: 'Failed to save to Drive', details: String(error) },
+      { error: 'Driveへの保存に失敗しました: ' + errorMessage },
       { status: 500 }
     );
   }

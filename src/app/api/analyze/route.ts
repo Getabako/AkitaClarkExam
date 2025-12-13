@@ -12,8 +12,19 @@ export async function POST(request: NextRequest) {
 
     let prompt = '';
 
+    const baseInstruction = `
+【重要な指示】
+- 「はい、承知しました」「任せてください」「お手伝いします」などの前置きは一切書かないでください
+- 分析結果のみを直接書いてください
+- マークダウン記法（**太字**など）は使用しないでください
+- 絵文字は使用しないでください
+- 自然な日本語の文章で書いてください
+`;
+
     if (step === 'values') {
       prompt = `
+${baseInstruction}
+
 あなたは高校生の自己分析をサポートするキャリアカウンセラーです。
 以下は高校生の「価値観」に関する回答です。
 
@@ -29,6 +40,8 @@ ${answers.map((a: Answer) => `質問: ${a.questionId}\n回答: ${a.answer}`).joi
 `;
     } else if (step === 'talents') {
       prompt = `
+${baseInstruction}
+
 あなたは高校生の自己分析をサポートするキャリアカウンセラーです。
 以下は高校生の「才能」に関する回答です。
 
@@ -37,7 +50,7 @@ ${answers.map((a: Answer) => `質問: ${a.questionId}\n回答: ${a.answer}`).joi
 この回答から、この生徒の才能を分析してください：
 1. 充実体験から見える天然の能力
 2. イライラの裏側にある無自覚な才能
-3. 短所を「〜だからこそ」で裏返した強み
+3. 短所を「だからこそ」で裏返した強み
 4. これらから導かれる核となる才能3つ
 
 分析は高校生にもわかりやすい言葉で、具体的に説明してください。
@@ -46,6 +59,8 @@ ${answers.map((a: Answer) => `質問: ${a.questionId}\n回答: ${a.answer}`).joi
 `;
     } else if (step === 'passion') {
       prompt = `
+${baseInstruction}
+
 あなたは高校生の自己分析をサポートするキャリアカウンセラーです。
 以下は高校生の「情熱」に関する回答です。
 
@@ -62,6 +77,8 @@ ${answers.map((a: Answer) => `質問: ${a.questionId}\n回答: ${a.answer}`).joi
 `;
     } else if (step === 'final') {
       prompt = `
+${baseInstruction}
+
 あなたは高校生の自己分析をサポートするキャリアカウンセラーです。
 これまでの分析結果を統合して、この生徒の「やりたいこと」を導き出してください。
 
