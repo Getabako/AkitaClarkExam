@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 
 // 送信先メールアドレス
-const RECIPIENT_EMAIL = 'takasaki19841121@gmail.com';
+const RECIPIENT_EMAIL = 'ifjuku@gmail.com';
 
 export async function POST(request: NextRequest) {
   try {

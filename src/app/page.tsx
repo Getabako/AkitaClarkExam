@@ -26,6 +26,48 @@ const stepDescriptions: Record<Step, string> = {
   complete: '',
 };
 
+// 分析結果を見やすく整形するコンポーネント
+const FormattedAnalysis = ({ text, isDark = false }: { text: string; isDark?: boolean }) => {
+  const lines = text.split('\n');
+  const textColor = isDark ? 'text-gray-200' : 'text-gray-700';
+  const titleColor = isDark ? 'text-white' : 'text-[#004097]';
+
+  return (
+    <div className="space-y-3">
+      {lines.map((line, index) => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return null;
+
+        // セクションタイトル（〜で始まり〜で終わる）
+        if (trimmedLine.startsWith('〜') && trimmedLine.endsWith('〜')) {
+          return (
+            <div key={index} className={`font-bold ${titleColor} text-base border-b ${isDark ? 'border-gray-600' : 'border-gray-200'} pb-2 mt-4 first:mt-0`}>
+              {trimmedLine}
+            </div>
+          );
+        }
+
+        // 箇条書き（・で始まる）
+        if (trimmedLine.startsWith('・')) {
+          return (
+            <div key={index} className={`${textColor} pl-4 flex items-start gap-2`}>
+              <span className={isDark ? 'text-[#01654d]' : 'text-[#004097]'}>●</span>
+              <span>{trimmedLine.substring(1).trim()}</span>
+            </div>
+          );
+        }
+
+        // 通常のテキスト
+        return (
+          <p key={index} className={`${textColor} leading-relaxed`}>
+            {trimmedLine}
+          </p>
+        );
+      })}
+    </div>
+  );
+};
+
 export default function Home() {
   const [session, setSession] = useState<SessionState>({
     studentName: '',
@@ -293,34 +335,34 @@ export default function Home() {
             <div className="space-y-6 mb-8">
               <div className="bg-[#004097]/5 rounded-2xl p-6 border border-[#004097]/10">
                 <h3 className="font-bold text-[#004097] mb-4 text-lg flex items-center gap-2">
-                  <span className="w-8 h-8 bg-[#004097] text-white rounded-full flex items-center justify-center text-sm">V</span>
-                  価値観
+                  <span className="w-10 h-10 bg-[#004097] text-white rounded-full flex items-center justify-center text-base font-bold">V</span>
+                  <span>価値観</span>
                 </h3>
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{session.stepAnalysis.values}</p>
+                <FormattedAnalysis text={session.stepAnalysis.values || ''} />
               </div>
 
               <div className="bg-[#01654d]/5 rounded-2xl p-6 border border-[#01654d]/10">
                 <h3 className="font-bold text-[#01654d] mb-4 text-lg flex items-center gap-2">
-                  <span className="w-8 h-8 bg-[#01654d] text-white rounded-full flex items-center justify-center text-sm">T</span>
-                  才能
+                  <span className="w-10 h-10 bg-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">T</span>
+                  <span>才能</span>
                 </h3>
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{session.stepAnalysis.talents}</p>
+                <FormattedAnalysis text={session.stepAnalysis.talents || ''} />
               </div>
 
               <div className="bg-gradient-to-r from-[#004097]/5 to-[#01654d]/5 rounded-2xl p-6 border border-gray-200">
                 <h3 className="font-bold text-gray-800 mb-4 text-lg flex items-center gap-2">
-                  <span className="w-8 h-8 bg-gradient-to-r from-[#004097] to-[#01654d] text-white rounded-full flex items-center justify-center text-sm">P</span>
-                  情熱
+                  <span className="w-10 h-10 bg-gradient-to-r from-[#004097] to-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">P</span>
+                  <span>情熱</span>
                 </h3>
-                <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{session.stepAnalysis.passion}</p>
+                <FormattedAnalysis text={session.stepAnalysis.passion || ''} />
               </div>
 
               <div className="bg-slate-800 rounded-2xl p-6 text-white">
                 <h3 className="font-bold mb-4 text-lg flex items-center gap-2">
-                  <span className="w-8 h-8 bg-white text-slate-800 rounded-full flex items-center justify-center text-sm font-bold">!</span>
-                  やりたいこと（V × T × P）
+                  <span className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-800 rounded-full flex items-center justify-center text-base font-bold">!</span>
+                  <span>やりたいこと（V × T × P）</span>
                 </h3>
-                <p className="whitespace-pre-wrap leading-relaxed text-gray-200">{mainAnalysis}</p>
+                <FormattedAnalysis text={mainAnalysis} isDark={true} />
               </div>
             </div>
 
