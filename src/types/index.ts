@@ -1,5 +1,5 @@
 // 質問ステップの定義
-export type Step = 'intro' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'choice';
+export type Step = 'intro' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'firstAction' | 'complete';
 
 // 各ステップの質問
 export interface Question {
@@ -59,4 +59,5 @@ export interface SessionState {
   finalAnalysis?: AnalysisResult;
   generatedImage?: string;
   wantsSupport?: boolean;
+  firstAction?: string;
 }

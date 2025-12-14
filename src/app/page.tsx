@@ -11,7 +11,8 @@ const stepTitles: Record<Step, string> = {
   passion: 'STEP 3: 情熱を知る',
   analysis: '分析中',
   result: '分析結果',
-  choice: '最後に',
+  firstAction: '今日のファーストアクション',
+  complete: '完了',
 };
 
 const stepDescriptions: Record<Step, string> = {
@@ -21,7 +22,8 @@ const stepDescriptions: Record<Step, string> = {
   passion: '情熱とは、生産性や合理性を無視してでも惹きつけられる、個人的な興味関心です。',
   analysis: '',
   result: '',
-  choice: '',
+  firstAction: '',
+  complete: '',
 };
 
 export default function Home() {
@@ -171,7 +173,7 @@ export default function Home() {
       const data = await response.json();
 
       if (response.ok) {
-        setSession(prev => ({ ...prev, currentStep: 'choice' }));
+        setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
       } else {
         throw new Error(data.error || '保存に失敗しました');
       }
@@ -182,12 +184,12 @@ export default function Home() {
     }
   };
 
-  const handleChoice = (wantsSupport: boolean) => {
-    setSession(prev => ({ ...prev, wantsSupport }));
-    alert(wantsSupport
-      ? '先生にサポートを依頼しました。授業で一緒に取り組んでいきましょう。'
-      : '了解です。自分のペースで進めてください。困ったらいつでも声をかけてね。'
-    );
+  const [firstActionInput, setFirstActionInput] = useState('');
+
+  const handleFirstActionSubmit = () => {
+    if (firstActionInput.trim()) {
+      setSession(prev => ({ ...prev, firstAction: firstActionInput, currentStep: 'complete' }));
+    }
   };
 
   // イントロ画面
@@ -202,12 +204,6 @@ export default function Home() {
             <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
           </div>
 
-          <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-8 rounded-r-lg">
-            <p className="text-sm text-amber-800">
-              <strong>注意：これは成績には一切関係ありません</strong><br />
-              正直に、思ったことをそのまま書いてください。
-            </p>
-          </div>
 
           <div className="space-y-4 mb-8 text-gray-600">
             <p className="text-gray-700">このワークでは、3つの視点から自分を分析します：</p>
@@ -354,54 +350,90 @@ export default function Home() {
     );
   }
 
-  // 選択画面
-  if (session.currentStep === 'choice') {
+  // ファーストアクション入力画面
+  if (session.currentStep === 'firstAction') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] flex items-center justify-center p-4">
         <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10 max-w-2xl w-full">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-[#004097]">
-              分析完了
+              今日のファーストアクション
             </h1>
             <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
           </div>
 
           <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg">
             <p className="text-[#01654d]">
-              結果はGoogle Driveの「{session.studentName}」フォルダに保存されました。
+              分析結果はGoogle Driveの「{session.studentName}」フォルダに保存されました。
             </p>
           </div>
 
           <div className="space-y-4 mb-8 text-gray-700">
             <p className="text-lg font-medium">
-              この分析で出てきた「やりたいこと」、授業でやってみる？
+              分析結果を踏まえて、今日できる小さな一歩を決めよう
             </p>
             <p className="text-sm text-gray-500">
-              どちらを選んでも成績には関係ありません。<br />
-              やってみたいなら一緒に取り組むし、一人でやりたいなら見守ります。
+              大きなことでなくてOK。「調べてみる」「誰かに話してみる」「5分だけやってみる」など、<br />
+              今日中にできる具体的なアクションを書いてください。
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-6">
+            <div>
+              <label className="block text-gray-800 font-medium text-lg mb-3">
+                今日、何をする？
+              </label>
+              <textarea
+                value={firstActionInput}
+                onChange={e => setFirstActionInput(e.target.value)}
+                className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#004097] focus:border-[#004097] min-h-[120px] text-gray-900 transition-all resize-none"
+                placeholder="例：プログラミングについてYouTubeで1本動画を見てみる"
+              />
+            </div>
+
             <button
-              onClick={() => handleChoice(true)}
-              className="bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-5 px-6 rounded-xl hover:opacity-90 transition-all font-medium shadow-lg"
+              onClick={handleFirstActionSubmit}
+              disabled={!firstActionInput.trim()}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
             >
-              サポートしてほしい
-              <span className="block text-sm font-normal mt-1 opacity-80">
-                先生と一緒に取り組む
-              </span>
-            </button>
-            <button
-              onClick={() => handleChoice(false)}
-              className="bg-gray-100 text-gray-800 py-5 px-6 rounded-xl hover:bg-gray-200 transition-all font-medium border-2 border-gray-200"
-            >
-              自分でやってみる
-              <span className="block text-sm font-normal mt-1 text-gray-500">
-                一人で進める（困ったら声かけてね）
-              </span>
+              決定して完了する
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 完了画面
+  if (session.currentStep === 'complete') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] flex items-center justify-center p-4">
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10 max-w-2xl w-full text-center">
+          <div className="mb-8">
+            <div className="w-20 h-20 bg-gradient-to-r from-[#004097] to-[#01654d] rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-[#004097]">
+              お疲れさまでした
+            </h1>
+            <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
+          </div>
+
+          <div className="bg-slate-800 rounded-2xl p-6 text-white mb-8 text-left">
+            <h3 className="font-bold mb-3 text-lg">今日のファーストアクション</h3>
+            <p className="text-gray-200 whitespace-pre-wrap">{session.firstAction}</p>
+          </div>
+
+          <p className="text-gray-600 mb-6">
+            この小さな一歩が、あなたの「やりたいこと」への第一歩です。<br />
+            今日中に実行してみてください。
+          </p>
+
+          <p className="text-sm text-gray-500">
+            ブラウザを閉じても大丈夫です。結果はDriveに保存されています。
+          </p>
         </div>
       </div>
     );
