@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Step, Answer, SessionState } from '@/types';
 import { getQuestionsByStep } from '@/lib/questions';
+import { googleDriveAPI } from '@/lib/googleDrive';
 
 const stepTitles: Record<Step, string> = {
   intro: 'はじめに',
@@ -36,6 +37,19 @@ export default function Home() {
   const [currentAnswers, setCurrentAnswers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [driveReady, setDriveReady] = useState(false);
+
+  // Google Drive APIを初期化
+  useEffect(() => {
+    const initDrive = async () => {
+      // スクリプトがロードされるまで少し待つ
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await googleDriveAPI.initialize();
+      setDriveReady(result);
+      console.log('Google Drive API ready:', result);
+    };
+    initDrive();
+  }, []);
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,50 +165,32 @@ export default function Home() {
     setIsLoading(false);
   };
 
-  const handleDownloadResult = () => {
-    const timestamp = new Date().toISOString().split('T')[0];
-    const analysisText = session.stepAnalysis.final || '';
-    const mainAnalysis = analysisText.split('===画像プロンプト===')[0].replace('===分析===', '').trim();
+  const handleSaveToDrive = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      // クライアントサイドでGoogle Drive APIを使用
+      const result = await googleDriveAPI.saveAnalysisToStudentFolder(
+        session.studentName,
+        {
+          values: session.stepAnalysis.values,
+          talents: session.stepAnalysis.talents,
+          passion: session.stepAnalysis.passion,
+          final: session.stepAnalysis.final,
+        }
+      );
 
-    const content = `================================================================================
-自己分析結果 - ${session.studentName}
-実施日: ${new Date().toLocaleDateString('ja-JP')}
-================================================================================
-
-【価値観の分析】
-${session.stepAnalysis.values || '未実施'}
-
---------------------------------------------------------------------------------
-
-【才能の分析】
-${session.stepAnalysis.talents || '未実施'}
-
---------------------------------------------------------------------------------
-
-【情熱の分析】
-${session.stepAnalysis.passion || '未実施'}
-
---------------------------------------------------------------------------------
-
-【総合分析・やりたいことの導出】
-${mainAnalysis || '未実施'}
-
-================================================================================
-`;
-
-    // テキストファイルをダウンロード
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `分析結果_${session.studentName}_${timestamp}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // 次のステップへ
-    setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
+      if (result.success) {
+        setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
+      } else {
+        throw new Error('保存に失敗しました');
+      }
+    } catch (err) {
+      console.error('Drive save error:', err);
+      setError(err instanceof Error ? err.message : '保存中にエラーが発生しました。Googleアカウントでログインしてください。');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const [firstActionInput, setFirstActionInput] = useState('');
@@ -351,10 +347,11 @@ ${mainAnalysis || '未実施'}
             )}
 
             <button
-              onClick={handleDownloadResult}
-              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg"
+              onClick={handleSaveToDrive}
+              disabled={isLoading}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
             >
-              結果をダウンロードして次へ進む
+              結果を保存して次へ進む
             </button>
           </div>
         </div>
@@ -376,7 +373,7 @@ ${mainAnalysis || '未実施'}
 
           <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg">
             <p className="text-[#01654d]">
-              分析結果のテキストファイルがダウンロードされました。
+              分析結果はGoogle Driveの「{session.studentName}」フォルダに保存されました。
             </p>
           </div>
 
@@ -444,7 +441,7 @@ ${mainAnalysis || '未実施'}
           </p>
 
           <p className="text-sm text-gray-500">
-            ダウンロードしたファイルを先生に提出してください。
+            ブラウザを閉じても大丈夫です。結果はDriveに保存されています。
           </p>
         </div>
       </div>
