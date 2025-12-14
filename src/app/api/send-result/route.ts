@@ -4,6 +4,23 @@ import { Resend } from 'resend';
 // 送信先メールアドレス
 const RECIPIENT_EMAIL = 'ifjuku@gmail.com';
 
+// 画像URLをBase64に変換
+async function imageUrlToBase64(url: string): Promise<string | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+
+    const arrayBuffer = await response.arrayBuffer();
+    const base64 = Buffer.from(arrayBuffer).toString('base64');
+    const contentType = response.headers.get('content-type') || 'image/png';
+
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error('Failed to convert image to base64:', error);
+    return null;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.RESEND_API_KEY;
@@ -13,6 +30,9 @@ export async function POST(request: NextRequest) {
     const resend = new Resend(apiKey);
 
     const { studentName, analysis, imageUrl } = await request.json();
+
+    // 画像をBase64に変換
+    const imageBase64 = imageUrl ? await imageUrlToBase64(imageUrl) : null;
     console.log('Sending results for:', studentName);
 
     const timestamp = new Date().toLocaleDateString('ja-JP');
@@ -67,10 +87,10 @@ export async function POST(request: NextRequest) {
       <pre>${mainAnalysis || '未実施'}</pre>
     </div>
 
-    ${imageUrl ? `
+    ${imageBase64 ? `
     <div class="image-container">
       <h3 style="color: #333;">ビジョン画像</h3>
-      <img src="${imageUrl}" alt="Generated vision">
+      <img src="${imageBase64}" alt="Generated vision">
     </div>
     ` : ''}
   </div>
@@ -104,7 +124,7 @@ ${analysis.passion || '未実施'}
 ${mainAnalysis || '未実施'}
 
 ================================================================================
-${imageUrl ? `\nビジョン画像URL: ${imageUrl}` : ''}
+${imageBase64 ? `\n※ビジョン画像はHTML版メールでご確認ください` : ''}
 `;
 
     // メール送信
