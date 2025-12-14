@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { Answer } from '@/types';
+
+interface AnswerWithQuestion {
+  questionId: string;
+  question: string;
+  answer: string;
+}
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
@@ -12,6 +17,13 @@ export async function POST(request: NextRequest) {
 
     let prompt = '';
 
+    // 回答をフォーマット（質問と回答のペア）
+    const formatAnswers = (answerList: AnswerWithQuestion[]) => {
+      return answerList.map((a: AnswerWithQuestion) =>
+        `【質問】${a.question}\n【回答】${a.answer || '（未回答）'}`
+      ).join('\n\n');
+    };
+
     const baseInstruction = `
 【絶対に守るルール】
 - 「はい、承知しました」「任せてください」などの前置きは絶対に書かない
@@ -19,6 +31,7 @@ export async function POST(request: NextRequest) {
 - 絵文字は絶対に使わない
 - ユーザーが書いていないことを勝手に追加しない
 - ユーザーの回答に書かれている内容だけを元に分析する
+- 回答が短い・抽象的な場合でも、書かれている内容から最大限読み取る
 `;
 
     if (step === 'values') {
@@ -26,15 +39,14 @@ export async function POST(request: NextRequest) {
 ${baseInstruction}
 
 あなたは高校生に寄り添うキャリアカウンセラーです。
-以下の回答を読んで、この生徒の価値観を分析してください。
+以下の質問と回答を読んで、この生徒の価値観を分析してください。
 
-【生徒の回答】
-${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
+${formatAnswers(answers)}
 
 【出力形式】必ずこの形式で書いてください：
 
 ～あなたの回答から～
-（生徒が書いた内容を2-3文で要約。「〜なんだね」「〜と感じているんだね」という共感の言葉で）
+（生徒が書いた内容を具体的に引用しながら2-3文で要約。「〜なんだね」「〜と感じているんだね」という共感の言葉で）
 
 ～大切にしている価値観～
 （回答から読み取れる価値観を3つ、それぞれ一言で。例：「自由」「成長」「つながり」）
@@ -42,25 +54,24 @@ ${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
 ～まとめ～
 （上記の価値観を踏まえて、この生徒が仕事で大切にしそうなことを50字以内で）
 
-【注意】
-- 必ず生徒の回答に書かれている内容だけを使う
-- 勝手に「人の役に立ちたい」などを追加しない
-- 全体で150字以内に収める
+【重要】
+- 回答に書かれている具体的なキーワードや表現を必ず使う
+- 「自由でいたい」と書いてあれば「自由」を価値観として抽出する
+- 回答が短くても、書かれている内容から価値観を読み取る
 `;
     } else if (step === 'talents') {
       prompt = `
 ${baseInstruction}
 
 あなたは高校生に寄り添うキャリアカウンセラーです。
-以下の回答を読んで、この生徒の才能を分析してください。
+以下の質問と回答を読んで、この生徒の才能を分析してください。
 
-【生徒の回答】
-${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
+${formatAnswers(answers)}
 
 【出力形式】必ずこの形式で書いてください：
 
 ～あなたの回答から～
-（生徒が書いた内容を2-3文で要約。「〜なんだね」という共感の言葉で）
+（生徒が書いた内容を具体的に引用しながら2-3文で要約。「〜なんだね」という共感の言葉で）
 
 ～見えてきた才能～
 （回答から読み取れる才能を3つ、それぞれ一言で。例：「集中力」「分析力」「共感力」）
@@ -68,24 +79,24 @@ ${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
 ～まとめ～
 （この才能を活かせる場面を50字以内で）
 
-【注意】
-- 必ず生徒の回答に書かれている内容だけを使う
-- 全体で150字以内に収める
+【重要】
+- 充実体験からは「何をしている時に充実を感じるか」を才能として抽出
+- イライラからは「自分には当たり前にできること」を才能として抽出
+- 短所からは「だからこそ」で強みに変換
 `;
     } else if (step === 'passion') {
       prompt = `
 ${baseInstruction}
 
 あなたは高校生に寄り添うキャリアカウンセラーです。
-以下の回答を読んで、この生徒の情熱を分析してください。
+以下の質問と回答を読んで、この生徒の情熱を分析してください。
 
-【生徒の回答】
-${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
+${formatAnswers(answers)}
 
 【出力形式】必ずこの形式で書いてください：
 
 ～あなたの回答から～
-（生徒が書いた内容を2-3文で要約。「〜が好きなんだね」という共感の言葉で）
+（生徒が書いた内容を具体的に引用しながら2-3文で要約。「〜が好きなんだね」という共感の言葉で）
 
 ～情熱のポイント～
 （回答から読み取れる興味・関心を3つ、それぞれ一言で）
@@ -93,9 +104,9 @@ ${answers.map((a: Answer) => `${a.answer}`).join('\n\n')}
 ～まとめ～
 （この情熱の本質を50字以内で）
 
-【注意】
-- 必ず生徒の回答に書かれている内容だけを使う
-- 全体で150字以内に収める
+【重要】
+- 回答に書かれている具体的な活動や興味を必ず抽出する
+- 「ゲーム」「絵を描く」など具体的なものがあればそれを使う
 `;
     } else if (step === 'final') {
       prompt = `

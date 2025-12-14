@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Step, Answer, SessionState } from '@/types';
-import { getQuestionsByStep } from '@/lib/questions';
+import { getQuestionsByStep, questions } from '@/lib/questions';
 
 const stepTitles: Record<Step, string> = {
   intro: 'はじめに',
@@ -78,6 +78,8 @@ export default function Home() {
   const [currentAnswers, setCurrentAnswers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [additionalInput, setAdditionalInput] = useState<Record<string, string>>({});
+  const [showAdditionalInput, setShowAdditionalInput] = useState<string | null>(null); // 'values' | 'talents' | 'passion' | null
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -95,16 +97,29 @@ export default function Home() {
     setError(null);
 
     try {
+      // 質問と回答をペアにして渡す
       const answersForStep = step === 'final'
         ? session.answers
         : session.answers.filter(a => a.questionId.startsWith(step[0]));
+
+      // 質問内容も含めたデータを作成
+      const answersWithQuestions = answersForStep.map(a => {
+        const q = questions.find(q => q.id === a.questionId);
+        return {
+          questionId: a.questionId,
+          question: q?.question || '',
+          answer: a.answer,
+        };
+      });
+
+      console.log('Sending to API:', { step, answers: answersWithQuestions }); // デバッグ用
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           step,
-          answers: answersForStep,
+          answers: answersWithQuestions,
           previousAnalysis: session.stepAnalysis,
         }),
       });
@@ -229,6 +244,90 @@ export default function Home() {
 
   const [firstActionInput, setFirstActionInput] = useState('');
 
+  // 追加入力で再分析
+  const handleReanalyze = async (stepKey: 'values' | 'talents' | 'passion') => {
+    const additionalText = additionalInput[stepKey];
+    if (!additionalText?.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // 既存の回答を取得
+      const existingAnswers = session.answers.filter(a => a.questionId.startsWith(stepKey[0]));
+
+      // 追加入力を含めた回答を作成
+      const answersWithQuestions = existingAnswers.map(a => {
+        const q = questions.find(q => q.id === a.questionId);
+        return {
+          questionId: a.questionId,
+          question: q?.question || '',
+          answer: a.answer,
+        };
+      });
+
+      // 追加情報を付加
+      answersWithQuestions.push({
+        questionId: `${stepKey[0]}_additional`,
+        question: '追加で教えてくれたこと',
+        answer: additionalText,
+      });
+
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: stepKey,
+          answers: answersWithQuestions,
+          previousAnalysis: session.stepAnalysis,
+        }),
+      });
+
+      if (!response.ok) throw new Error('再分析に失敗しました');
+
+      const data = await response.json();
+
+      // 分析結果を更新
+      setSession(prev => ({
+        ...prev,
+        stepAnalysis: { ...prev.stepAnalysis, [stepKey]: data.analysis },
+      }));
+
+      // 追加入力をクリア
+      setAdditionalInput(prev => ({ ...prev, [stepKey]: '' }));
+      setShowAdditionalInput(null);
+
+      // 最終分析も再実行
+      const finalResponse = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'final',
+          answers: session.answers.map(a => {
+            const q = questions.find(q => q.id === a.questionId);
+            return { questionId: a.questionId, question: q?.question || '', answer: a.answer };
+          }),
+          previousAnalysis: {
+            ...session.stepAnalysis,
+            [stepKey]: data.analysis,
+          },
+        }),
+      });
+
+      if (finalResponse.ok) {
+        const finalData = await finalResponse.json();
+        setSession(prev => ({
+          ...prev,
+          stepAnalysis: { ...prev.stepAnalysis, final: finalData.analysis },
+        }));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '再分析中にエラーが発生しました');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleFirstActionSubmit = () => {
     if (firstActionInput.trim()) {
       setSession(prev => ({ ...prev, firstAction: firstActionInput, currentStep: 'complete' }));
@@ -333,30 +432,115 @@ export default function Home() {
             )}
 
             <div className="space-y-6 mb-8">
+              {/* 価値観 */}
               <div className="bg-[#004097]/5 rounded-2xl p-6 border border-[#004097]/10">
-                <h3 className="font-bold text-[#004097] mb-4 text-lg flex items-center gap-2">
-                  <span className="w-10 h-10 bg-[#004097] text-white rounded-full flex items-center justify-center text-base font-bold">V</span>
-                  <span>価値観</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-[#004097] text-lg flex items-center gap-2">
+                    <span className="w-10 h-10 bg-[#004097] text-white rounded-full flex items-center justify-center text-base font-bold">V</span>
+                    <span>価値観</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowAdditionalInput(showAdditionalInput === 'values' ? null : 'values')}
+                    className="text-sm text-[#004097] hover:underline"
+                  >
+                    {showAdditionalInput === 'values' ? '閉じる' : '情報を追加する'}
+                  </button>
+                </div>
                 <FormattedAnalysis text={session.stepAnalysis.values || ''} />
+                {showAdditionalInput === 'values' && (
+                  <div className="mt-4 pt-4 border-t border-[#004097]/20">
+                    <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：どんな時に自由を感じる？誰と一緒にいたい？）</p>
+                    <textarea
+                      value={additionalInput.values || ''}
+                      onChange={e => setAdditionalInput(prev => ({ ...prev, values: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 text-sm"
+                      placeholder="例：一人で好きなことに没頭している時が一番心地いい"
+                      rows={3}
+                    />
+                    <button
+                      onClick={() => handleReanalyze('values')}
+                      disabled={!additionalInput.values?.trim() || isLoading}
+                      className="mt-2 px-4 py-2 bg-[#004097] text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50"
+                    >
+                      再分析する
+                    </button>
+                  </div>
+                )}
               </div>
 
+              {/* 才能 */}
               <div className="bg-[#01654d]/5 rounded-2xl p-6 border border-[#01654d]/10">
-                <h3 className="font-bold text-[#01654d] mb-4 text-lg flex items-center gap-2">
-                  <span className="w-10 h-10 bg-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">T</span>
-                  <span>才能</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-[#01654d] text-lg flex items-center gap-2">
+                    <span className="w-10 h-10 bg-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">T</span>
+                    <span>才能</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowAdditionalInput(showAdditionalInput === 'talents' ? null : 'talents')}
+                    className="text-sm text-[#01654d] hover:underline"
+                  >
+                    {showAdditionalInput === 'talents' ? '閉じる' : '情報を追加する'}
+                  </button>
+                </div>
                 <FormattedAnalysis text={session.stepAnalysis.talents || ''} />
+                {showAdditionalInput === 'talents' && (
+                  <div className="mt-4 pt-4 border-t border-[#01654d]/20">
+                    <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：夢中になった経験、周りから褒められること）</p>
+                    <textarea
+                      value={additionalInput.talents || ''}
+                      onChange={e => setAdditionalInput(prev => ({ ...prev, talents: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 text-sm"
+                      placeholder="例：友達の相談に乗るのが得意とよく言われる"
+                      rows={3}
+                    />
+                    <button
+                      onClick={() => handleReanalyze('talents')}
+                      disabled={!additionalInput.talents?.trim() || isLoading}
+                      className="mt-2 px-4 py-2 bg-[#01654d] text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50"
+                    >
+                      再分析する
+                    </button>
+                  </div>
+                )}
               </div>
 
+              {/* 情熱 */}
               <div className="bg-gradient-to-r from-[#004097]/5 to-[#01654d]/5 rounded-2xl p-6 border border-gray-200">
-                <h3 className="font-bold text-gray-800 mb-4 text-lg flex items-center gap-2">
-                  <span className="w-10 h-10 bg-gradient-to-r from-[#004097] to-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">P</span>
-                  <span>情熱</span>
-                </h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                    <span className="w-10 h-10 bg-gradient-to-r from-[#004097] to-[#01654d] text-white rounded-full flex items-center justify-center text-base font-bold">P</span>
+                    <span>情熱</span>
+                  </h3>
+                  <button
+                    onClick={() => setShowAdditionalInput(showAdditionalInput === 'passion' ? null : 'passion')}
+                    className="text-sm text-gray-600 hover:underline"
+                  >
+                    {showAdditionalInput === 'passion' ? '閉じる' : '情報を追加する'}
+                  </button>
+                </div>
                 <FormattedAnalysis text={session.stepAnalysis.passion || ''} />
+                {showAdditionalInput === 'passion' && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：好きなこと、時間を忘れて没頭すること）</p>
+                    <textarea
+                      value={additionalInput.passion || ''}
+                      onChange={e => setAdditionalInput(prev => ({ ...prev, passion: e.target.value }))}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 text-sm"
+                      placeholder="例：ゲームの攻略法を考えるのが好き、動画編集にハマっている"
+                      rows={3}
+                    />
+                    <button
+                      onClick={() => handleReanalyze('passion')}
+                      disabled={!additionalInput.passion?.trim() || isLoading}
+                      className="mt-2 px-4 py-2 bg-gray-700 text-white rounded-lg text-sm hover:opacity-90 disabled:opacity-50"
+                    >
+                      再分析する
+                    </button>
+                  </div>
+                )}
               </div>
 
+              {/* やりたいこと */}
               <div className="bg-slate-800 rounded-2xl p-6 text-white">
                 <h3 className="font-bold mb-4 text-lg flex items-center gap-2">
                   <span className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-800 rounded-full flex items-center justify-center text-base font-bold">!</span>
