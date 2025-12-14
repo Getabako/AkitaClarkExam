@@ -55,6 +55,8 @@ async function findOrCreateFolder(drive: ReturnType<typeof google.drive>, folder
   const searchResponse = await drive.files.list({
     q: `name='${folderName}' and '${PARENT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
     fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
   });
 
   console.log('Search response:', JSON.stringify(searchResponse.data));
@@ -73,6 +75,7 @@ async function findOrCreateFolder(drive: ReturnType<typeof google.drive>, folder
       parents: [PARENT_FOLDER_ID],
     },
     fields: 'id',
+    supportsAllDrives: true,
   });
 
   console.log('Created folder:', createResponse.data.id);
@@ -100,6 +103,7 @@ async function uploadFile(
     },
     media,
     fields: 'id, webViewLink',
+    supportsAllDrives: true,
   });
 
   console.log('Uploaded file:', response.data.id);
