@@ -29,11 +29,11 @@ export async function POST(request: NextRequest) {
     }
     const resend = new Resend(apiKey);
 
-    const { studentName, analysis, imageUrl } = await request.json();
+    const { studentName, analysis, imageUrl, firstAction, supportPreferenceLabel } = await request.json();
 
     // 画像をBase64に変換
     const imageBase64 = imageUrl ? await imageUrlToBase64(imageUrl) : null;
-    console.log('Sending results for:', studentName);
+    console.log('Sending results for:', studentName, 'Support preference:', supportPreferenceLabel);
 
     const timestamp = new Date().toLocaleDateString('ja-JP');
     const analysisText = analysis.final || '';
@@ -93,6 +93,16 @@ export async function POST(request: NextRequest) {
       <img src="${imageBase64}" alt="Generated vision">
     </div>
     ` : ''}
+
+    <div class="section" style="border-left-color: #f59e0b; background: #fffbeb;">
+      <h3 style="color: #d97706;">今日のファーストアクション</h3>
+      <pre>${firstAction || '未入力'}</pre>
+    </div>
+
+    <div class="section" style="border-left-color: #8b5cf6; background: #f5f3ff;">
+      <h3 style="color: #7c3aed;">今後の関わり方についての意思表示</h3>
+      <pre>${supportPreferenceLabel || '未選択'}</pre>
+    </div>
   </div>
 </body>
 </html>
@@ -122,6 +132,16 @@ ${analysis.passion || '未実施'}
 
 【総合分析・やりたいことの導出】
 ${mainAnalysis || '未実施'}
+
+--------------------------------------------------------------------------------
+
+【今日のファーストアクション】
+${firstAction || '未入力'}
+
+--------------------------------------------------------------------------------
+
+【今後の関わり方についての意思表示】
+${supportPreferenceLabel || '未選択'}
 
 ================================================================================
 ${imageBase64 ? `\n※ビジョン画像はHTML版メールでご確認ください` : ''}

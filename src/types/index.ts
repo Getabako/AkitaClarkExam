@@ -1,5 +1,12 @@
 // 質問ステップの定義
-export type Step = 'intro' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'firstAction' | 'complete';
+export type Step = 'intro' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'firstAction' | 'confirm' | 'complete';
+
+// 意思表示の選択肢
+export type SupportPreference =
+  | 'want_guidance'      // 教わりたいことがある
+  | 'need_direction'     // やりたいけど何をすればいいかわからない
+  | 'already_decided'    // やりたいことがバッチリ決まっている
+  | 'leave_me_alone';    // 何もやりたくないし放っておいてほしい
 
 // 各ステップの質問
 export interface Question {
@@ -58,6 +65,6 @@ export interface SessionState {
   };
   finalAnalysis?: AnalysisResult;
   generatedImage?: string;
-  wantsSupport?: boolean;
   firstAction?: string;
+  supportPreference?: SupportPreference;
 }

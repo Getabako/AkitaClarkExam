@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Step, Answer, SessionState } from '@/types';
+import { Step, Answer, SessionState, SupportPreference } from '@/types';
 import { getQuestionsByStep, questions } from '@/lib/questions';
 
 // クラーク博士の考え中アニメーション
@@ -121,7 +121,21 @@ const stepTitles: Record<Step, string> = {
   analysis: '分析中',
   result: '分析結果',
   firstAction: '今日のファーストアクション',
+  confirm: '送信内容の確認',
   complete: '完了',
+};
+
+// 意思表示の選択肢
+const supportPreferenceOptions: { value: SupportPreference; label: string; description: string }[] = [
+  { value: 'want_guidance', label: '教わりたいことがある', description: '具体的に学びたいこと、相談したいことがある' },
+  { value: 'need_direction', label: 'やりたいけど何をすればいいかわからない', description: '興味はあるけど、どう始めればいいか迷っている' },
+  { value: 'already_decided', label: 'やりたいことがバッチリ決まっている', description: '自分で進められるので、見守ってほしい' },
+  { value: 'leave_me_alone', label: '今は放っておいてほしい', description: '自分のペースで考えたい' },
+];
+
+const getSupportPreferenceLabel = (value: SupportPreference | undefined): string => {
+  const option = supportPreferenceOptions.find(o => o.value === value);
+  return option?.label || '';
 };
 
 const stepDescriptions: Record<Step, string> = {
@@ -132,6 +146,7 @@ const stepDescriptions: Record<Step, string> = {
   analysis: '',
   result: '',
   firstAction: '',
+  confirm: '',
   complete: '',
 };
 
@@ -188,7 +203,9 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [additionalInput, setAdditionalInput] = useState<Record<string, string>>({});
-  const [showAdditionalInput, setShowAdditionalInput] = useState<string | null>(null); // 'values' | 'talents' | 'passion' | null
+  const [showAdditionalInput, setShowAdditionalInput] = useState<string | null>(null);
+  const [firstActionInput, setFirstActionInput] = useState('');
+  const [supportPreference, setSupportPreference] = useState<SupportPreference | null>(null);
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -339,13 +356,21 @@ export default function Home() {
             final: session.stepAnalysis.final,
           },
           imageUrl: session.generatedImage,
+          firstAction: firstActionInput,
+          supportPreference: supportPreference,
+          supportPreferenceLabel: getSupportPreferenceLabel(supportPreference || undefined),
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
+        setSession(prev => ({
+          ...prev,
+          currentStep: 'complete',
+          firstAction: firstActionInput,
+          supportPreference: supportPreference || undefined,
+        }));
       } else {
         throw new Error(data.error || '送信に失敗しました');
       }
@@ -356,8 +381,6 @@ export default function Home() {
       setIsLoading(false);
     }
   };
-
-  const [firstActionInput, setFirstActionInput] = useState('');
 
   // 追加入力で再分析
   const handleReanalyze = async (stepKey: 'values' | 'talents' | 'passion') => {
@@ -750,11 +773,10 @@ export default function Home() {
             )}
 
             <button
-              onClick={handleSendResult}
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
+              onClick={() => setSession(prev => ({ ...prev, currentStep: 'firstAction' }))}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg"
             >
-              結果を送信して次へ進む
+              次へ進む
             </button>
           </div>
         </div>
@@ -762,54 +784,145 @@ export default function Home() {
     );
   }
 
-  // ファーストアクション入力画面
+  // ファーストアクション＆意思表示入力画面
   if (session.currentStep === 'firstAction') {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] flex items-center justify-center p-4">
-        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10 max-w-2xl w-full">
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-[#004097]">
-              今日のファーストアクション
-            </h1>
-            <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
-          </div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] py-10 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-[#004097]">
+                最後の質問
+              </h1>
+              <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
+            </div>
 
-          <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg">
-            <p className="text-[#01654d]">
-              分析結果は先生にメールで送信されました。
-            </p>
-          </div>
-
-          <div className="space-y-4 mb-8 text-gray-700">
-            <p className="text-lg font-medium">
-              分析結果を踏まえて、今日できる小さな一歩を決めよう
-            </p>
-            <p className="text-sm text-gray-500">
-              大きなことでなくてOK。「調べてみる」「誰かに話してみる」「5分だけやってみる」など、<br />
-              今日中にできる具体的なアクションを書いてください。
-            </p>
-          </div>
-
-          <div className="space-y-6">
-            <div>
-              <label className="block text-gray-800 font-medium text-lg mb-3">
-                今日、何をする？
-              </label>
+            {/* ファーストアクション */}
+            <div className="mb-10">
+              <h2 className="text-lg font-bold text-gray-800 mb-2">
+                今日のファーストアクション
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                大きなことでなくてOK。「調べてみる」「誰かに話してみる」「5分だけやってみる」など、<br />
+                今日中にできる具体的なアクションを書いてください。
+              </p>
               <textarea
                 value={firstActionInput}
                 onChange={e => setFirstActionInput(e.target.value)}
-                className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#004097] focus:border-[#004097] min-h-[120px] text-gray-900 transition-all resize-none"
+                className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#004097] focus:border-[#004097] min-h-[100px] text-gray-900 transition-all resize-none"
                 placeholder="例：プログラミングについてYouTubeで1本動画を見てみる"
               />
             </div>
 
+            {/* 意思表示 */}
+            <div className="mb-8">
+              <h2 className="text-lg font-bold text-gray-800 mb-2">
+                今後の関わり方について
+              </h2>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+                <p className="text-sm text-gray-600 mb-2">
+                  どれを選んでも成績には一切影響しません。
+                </p>
+                <p className="text-sm text-gray-600">
+                  正直なところ、どのような関わりが良いのか先生もわからないことが多いです。<br />
+                  あなたの素直な気持ちを教えてください。
+                </p>
+              </div>
+              <div className="space-y-3">
+                {supportPreferenceOptions.map(option => (
+                  <label
+                    key={option.value}
+                    className={`block p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                      supportPreference === option.value
+                        ? 'border-[#004097] bg-[#004097]/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="radio"
+                        name="supportPreference"
+                        value={option.value}
+                        checked={supportPreference === option.value}
+                        onChange={() => setSupportPreference(option.value)}
+                        className="mt-1 w-4 h-4 text-[#004097] focus:ring-[#004097]"
+                      />
+                      <div>
+                        <p className="font-medium text-gray-800">{option.label}</p>
+                        <p className="text-sm text-gray-500">{option.description}</p>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <button
-              onClick={handleFirstActionSubmit}
-              disabled={!firstActionInput.trim()}
+              onClick={() => setSession(prev => ({ ...prev, currentStep: 'confirm' }))}
+              disabled={!firstActionInput.trim() || !supportPreference}
               className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
             >
-              決定して完了する
+              確認画面へ進む
             </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 送信前確認画面
+  if (session.currentStep === 'confirm') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] py-10 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-[#004097]">
+                送信内容の確認
+              </h1>
+              <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
+            </div>
+
+            <p className="text-gray-600 mb-6 text-center">
+              以下の内容を先生にメールで送信します。<br />
+              内容を確認してください。
+            </p>
+
+            <div className="space-y-6 mb-8">
+              {/* ファーストアクション */}
+              <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-2">今日のファーストアクション</h3>
+                <p className="text-gray-700 whitespace-pre-wrap">{firstActionInput}</p>
+              </div>
+
+              {/* 意思表示 */}
+              <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-2">今後の関わり方</h3>
+                <p className="text-gray-700">{getSupportPreferenceLabel(supportPreference || undefined)}</p>
+              </div>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
+                <p className="text-red-800">{error}</p>
+              </div>
+            )}
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setSession(prev => ({ ...prev, currentStep: 'firstAction' }))}
+                className="flex-1 bg-gray-200 text-gray-700 py-4 px-6 rounded-xl hover:bg-gray-300 transition-all font-medium text-lg"
+              >
+                戻って修正
+              </button>
+              <button
+                onClick={handleSendResult}
+                disabled={isLoading}
+                className="flex-1 bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
+              >
+                {isLoading ? '送信中...' : '送信する'}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -833,6 +946,12 @@ export default function Home() {
             <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
           </div>
 
+          <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg text-left">
+            <p className="text-[#01654d]">
+              結果は先生にメールで送信されました。
+            </p>
+          </div>
+
           <div className="bg-slate-800 rounded-2xl p-6 text-white mb-8 text-left">
             <h3 className="font-bold mb-3 text-lg">今日のファーストアクション</h3>
             <p className="text-gray-200 whitespace-pre-wrap">{session.firstAction}</p>
@@ -844,7 +963,7 @@ export default function Home() {
           </p>
 
           <p className="text-sm text-gray-500">
-            ブラウザを閉じても大丈夫です。結果は先生に届いています。
+            ブラウザを閉じても大丈夫です。
           </p>
         </div>
       </div>
