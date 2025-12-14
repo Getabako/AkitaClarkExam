@@ -92,15 +92,18 @@ export default function Home() {
     setCurrentAnswers(prev => ({ ...prev, [questionId]: value }));
   };
 
-  const analyzeStep = async (step: 'values' | 'talents' | 'passion' | 'final') => {
+  const analyzeStep = async (step: 'values' | 'talents' | 'passion' | 'final', answersToUse?: Answer[]) => {
     setIsLoading(true);
     setError(null);
 
     try {
+      // 渡された回答を使用、なければsession.answersを使用
+      const allAnswers = answersToUse || session.answers;
+
       // 質問と回答をペアにして渡す
       const answersForStep = step === 'final'
-        ? session.answers
-        : session.answers.filter(a => a.questionId.startsWith(step[0]));
+        ? allAnswers
+        : allAnswers.filter(a => a.questionId.startsWith(step[0]));
 
       // 質問内容も含めたデータを作成
       const answersWithQuestions = answersForStep.map(a => {
@@ -143,13 +146,16 @@ export default function Home() {
       answer: currentAnswers[q.id] || '',
     }));
 
+    // 更新後の回答リストを作成
     const updatedAnswers = [...session.answers, ...newAnswers];
-    setSession(prev => ({ ...prev, answers: updatedAnswers }));
+
+    // 先にセッションを更新
+    setSession(prev => ({ ...prev, answers: updatedAnswers, currentStep: 'analysis' }));
 
     const stepKey = session.currentStep as 'values' | 'talents' | 'passion';
-    setSession(prev => ({ ...prev, currentStep: 'analysis' }));
 
-    const analysis = await analyzeStep(stepKey);
+    // 更新後の回答を明示的に渡して分析
+    const analysis = await analyzeStep(stepKey, updatedAnswers);
 
     if (analysis) {
       setSession(prev => ({
@@ -414,6 +420,20 @@ export default function Home() {
     const analysisText = session.stepAnalysis.final || '';
     const mainAnalysis = analysisText.split('===画像プロンプト===')[0].replace('===分析===', '').trim();
 
+    // 各ステップの回答を取得するヘルパー関数
+    const getAnswersForStep = (stepPrefix: string) => {
+      return session.answers
+        .filter(a => a.questionId.startsWith(stepPrefix))
+        .map(a => {
+          const q = questions.find(q => q.id === a.questionId);
+          return { question: q?.question || '', answer: a.answer };
+        });
+    };
+
+    const valuesAnswers = getAnswersForStep('v');
+    const talentsAnswers = getAnswersForStep('t');
+    const passionAnswers = getAnswersForStep('p');
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] py-10 px-4">
         <div className="max-w-4xl mx-auto">
@@ -446,6 +466,25 @@ export default function Home() {
                     {showAdditionalInput === 'values' ? '閉じる' : '情報を追加する'}
                   </button>
                 </div>
+
+                {/* あなたの回答 */}
+                <div className="bg-white rounded-lg p-4 mb-4 border border-[#004097]/20">
+                  <p className="text-xs text-gray-500 mb-2 font-medium">あなたの回答：</p>
+                  {valuesAnswers.length > 0 ? (
+                    <div className="space-y-2">
+                      {valuesAnswers.map((a, i) => (
+                        <div key={i} className="text-sm">
+                          <p className="text-gray-500 text-xs">Q{i + 1}. {a.question}</p>
+                          <p className="text-gray-800 bg-gray-50 p-2 rounded mt-1">{a.answer || '（未回答）'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm">回答データがありません</p>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
                 <FormattedAnalysis text={session.stepAnalysis.values || ''} />
                 {showAdditionalInput === 'values' && (
                   <div className="mt-4 pt-4 border-t border-[#004097]/20">
@@ -482,6 +521,25 @@ export default function Home() {
                     {showAdditionalInput === 'talents' ? '閉じる' : '情報を追加する'}
                   </button>
                 </div>
+
+                {/* あなたの回答 */}
+                <div className="bg-white rounded-lg p-4 mb-4 border border-[#01654d]/20">
+                  <p className="text-xs text-gray-500 mb-2 font-medium">あなたの回答：</p>
+                  {talentsAnswers.length > 0 ? (
+                    <div className="space-y-2">
+                      {talentsAnswers.map((a, i) => (
+                        <div key={i} className="text-sm">
+                          <p className="text-gray-500 text-xs">Q{i + 1}. {a.question}</p>
+                          <p className="text-gray-800 bg-gray-50 p-2 rounded mt-1">{a.answer || '（未回答）'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm">回答データがありません</p>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
                 <FormattedAnalysis text={session.stepAnalysis.talents || ''} />
                 {showAdditionalInput === 'talents' && (
                   <div className="mt-4 pt-4 border-t border-[#01654d]/20">
@@ -518,6 +576,25 @@ export default function Home() {
                     {showAdditionalInput === 'passion' ? '閉じる' : '情報を追加する'}
                   </button>
                 </div>
+
+                {/* あなたの回答 */}
+                <div className="bg-white rounded-lg p-4 mb-4 border border-gray-200">
+                  <p className="text-xs text-gray-500 mb-2 font-medium">あなたの回答：</p>
+                  {passionAnswers.length > 0 ? (
+                    <div className="space-y-2">
+                      {passionAnswers.map((a, i) => (
+                        <div key={i} className="text-sm">
+                          <p className="text-gray-500 text-xs">Q{i + 1}. {a.question}</p>
+                          <p className="text-gray-800 bg-gray-50 p-2 rounded mt-1">{a.answer || '（未回答）'}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 text-sm">回答データがありません</p>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
                 <FormattedAnalysis text={session.stepAnalysis.passion || ''} />
                 {showAdditionalInput === 'passion' && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
