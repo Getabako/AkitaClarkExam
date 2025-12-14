@@ -1,8 +1,117 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Step, Answer, SessionState } from '@/types';
 import { getQuestionsByStep, questions } from '@/lib/questions';
+
+// クラーク博士の考え中アニメーション
+const ClarkThinking = () => {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setFrame(f => (f + 1) % 2);
+    }, 800); // 0.8秒ごとに切り替え
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <img
+      src={frame === 0 ? '/images/clark-thinking-1.png' : '/images/clark-thinking-2.png'}
+      alt="クラーク博士が考え中"
+      className="w-48 h-auto"
+    />
+  );
+};
+
+// クラーク博士の喋りアニメーション（テキストと同期）
+const ClarkTalking = ({ isAnimating }: { isAnimating: boolean }) => {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!isAnimating) {
+      setFrame(0); // 口を閉じた状態
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setFrame(f => (f + 1) % 2);
+    }, 150); // 0.15秒ごとに口パク
+    return () => clearInterval(interval);
+  }, [isAnimating]);
+
+  return (
+    <img
+      src={frame === 0 ? '/images/clark-talk-closed.png' : '/images/clark-talk-open.png'}
+      alt="クラーク博士"
+      className="w-32 h-auto flex-shrink-0"
+    />
+  );
+};
+
+// クラーク博士の喋りアニメーション付き分析表示
+const AnalysisWithClark = ({ text, isDark = false }: { text: string; isDark?: boolean }) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [isAnimating, setIsAnimating] = useState(true);
+
+  useEffect(() => {
+    setDisplayedText('');
+    setIsAnimating(true);
+    let index = 0;
+
+    const interval = setInterval(() => {
+      if (index < text.length) {
+        setDisplayedText(text.slice(0, index + 1));
+        index++;
+      } else {
+        clearInterval(interval);
+        setIsAnimating(false);
+      }
+    }, 40); // 1文字40ms
+
+    return () => clearInterval(interval);
+  }, [text]);
+
+  const lines = displayedText.split('\n');
+  const textColor = isDark ? 'text-gray-200' : 'text-gray-700';
+  const titleColor = isDark ? 'text-white' : 'text-[#004097]';
+
+  return (
+    <div className="flex gap-4 items-start">
+      <ClarkTalking isAnimating={isAnimating} />
+      <div className="flex-1 space-y-3">
+        {lines.map((line, index) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) return null;
+
+          if (trimmedLine.startsWith('〜') && trimmedLine.endsWith('〜')) {
+            return (
+              <div key={index} className={`font-bold ${titleColor} text-base border-b ${isDark ? 'border-gray-600' : 'border-gray-200'} pb-2 mt-4 first:mt-0`}>
+                {trimmedLine}
+              </div>
+            );
+          }
+
+          if (trimmedLine.startsWith('・')) {
+            return (
+              <div key={index} className={`${textColor} pl-4 flex items-start gap-2`}>
+                <span className={isDark ? 'text-[#01654d]' : 'text-[#004097]'}>●</span>
+                <span>{trimmedLine.substring(1).trim()}</span>
+              </div>
+            );
+          }
+
+          return (
+            <p key={index} className={`${textColor} leading-relaxed`}>
+              {trimmedLine}
+            </p>
+          );
+        })}
+        {isAnimating && <span className="animate-pulse text-[#004097]">|</span>}
+      </div>
+    </div>
+  );
+};
 
 const stepTitles: Record<Step, string> = {
   intro: 'はじめに',
@@ -404,11 +513,10 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] flex items-center justify-center p-4">
         <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10 max-w-md w-full text-center">
-          <div className="relative w-20 h-20 mx-auto mb-8">
-            <div className="absolute inset-0 rounded-full border-4 border-gray-200"></div>
-            <div className="absolute inset-0 rounded-full border-4 border-[#004097] border-t-transparent animate-spin"></div>
+          <div className="flex justify-center mb-6">
+            <ClarkThinking />
           </div>
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">AIが分析中</h2>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">クラーク博士が分析中...</h2>
           <p className="text-gray-600">あなたの回答を読み解いています</p>
         </div>
       </div>
@@ -484,8 +592,8 @@ export default function Home() {
                   )}
                 </div>
 
-                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
-                <FormattedAnalysis text={session.stepAnalysis.values || ''} />
+                <p className="text-xs text-gray-500 mb-2 font-medium">クラーク博士の分析：</p>
+                <AnalysisWithClark text={session.stepAnalysis.values || ''} />
                 {showAdditionalInput === 'values' && (
                   <div className="mt-4 pt-4 border-t border-[#004097]/20">
                     <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：どんな時に自由を感じる？誰と一緒にいたい？）</p>
@@ -539,8 +647,8 @@ export default function Home() {
                   )}
                 </div>
 
-                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
-                <FormattedAnalysis text={session.stepAnalysis.talents || ''} />
+                <p className="text-xs text-gray-500 mb-2 font-medium">クラーク博士の分析：</p>
+                <AnalysisWithClark text={session.stepAnalysis.talents || ''} />
                 {showAdditionalInput === 'talents' && (
                   <div className="mt-4 pt-4 border-t border-[#01654d]/20">
                     <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：夢中になった経験、周りから褒められること）</p>
@@ -594,8 +702,8 @@ export default function Home() {
                   )}
                 </div>
 
-                <p className="text-xs text-gray-500 mb-2 font-medium">AIの分析：</p>
-                <FormattedAnalysis text={session.stepAnalysis.passion || ''} />
+                <p className="text-xs text-gray-500 mb-2 font-medium">クラーク博士の分析：</p>
+                <AnalysisWithClark text={session.stepAnalysis.passion || ''} />
                 {showAdditionalInput === 'passion' && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     <p className="text-sm text-gray-600 mb-2">もっと詳しく教えてください（例：好きなこと、時間を忘れて没頭すること）</p>
@@ -623,7 +731,7 @@ export default function Home() {
                   <span className="w-10 h-10 bg-gradient-to-r from-yellow-400 to-orange-500 text-slate-800 rounded-full flex items-center justify-center text-base font-bold">!</span>
                   <span>やりたいこと（V × T × P）</span>
                 </h3>
-                <FormattedAnalysis text={mainAnalysis} isDark={true} />
+                <AnalysisWithClark text={mainAnalysis} isDark={true} />
               </div>
             </div>
 
