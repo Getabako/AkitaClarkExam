@@ -151,37 +151,50 @@ export default function Home() {
     setIsLoading(false);
   };
 
-  const handleSaveToDrive = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/save-to-drive', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentName: session.studentName,
-          analysis: {
-            values: session.stepAnalysis.values,
-            talents: session.stepAnalysis.talents,
-            passion: session.stepAnalysis.passion,
-            final: session.stepAnalysis.final,
-          },
-          imageUrl: session.generatedImage,
-        }),
-      });
+  const handleDownloadResult = () => {
+    const timestamp = new Date().toISOString().split('T')[0];
+    const analysisText = session.stepAnalysis.final || '';
+    const mainAnalysis = analysisText.split('===画像プロンプト===')[0].replace('===分析===', '').trim();
 
-      const data = await response.json();
+    const content = `================================================================================
+自己分析結果 - ${session.studentName}
+実施日: ${new Date().toLocaleDateString('ja-JP')}
+================================================================================
 
-      if (response.ok) {
-        setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
-      } else {
-        throw new Error(data.error || '保存に失敗しました');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '保存中にエラーが発生しました');
-    } finally {
-      setIsLoading(false);
-    }
+【価値観の分析】
+${session.stepAnalysis.values || '未実施'}
+
+--------------------------------------------------------------------------------
+
+【才能の分析】
+${session.stepAnalysis.talents || '未実施'}
+
+--------------------------------------------------------------------------------
+
+【情熱の分析】
+${session.stepAnalysis.passion || '未実施'}
+
+--------------------------------------------------------------------------------
+
+【総合分析・やりたいことの導出】
+${mainAnalysis || '未実施'}
+
+================================================================================
+`;
+
+    // テキストファイルをダウンロード
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `分析結果_${session.studentName}_${timestamp}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    // 次のステップへ
+    setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
   };
 
   const [firstActionInput, setFirstActionInput] = useState('');
@@ -338,11 +351,10 @@ export default function Home() {
             )}
 
             <button
-              onClick={handleSaveToDrive}
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
+              onClick={handleDownloadResult}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg"
             >
-              結果を保存して次へ進む
+              結果をダウンロードして次へ進む
             </button>
           </div>
         </div>
@@ -364,7 +376,7 @@ export default function Home() {
 
           <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg">
             <p className="text-[#01654d]">
-              分析結果はGoogle Driveの「{session.studentName}」フォルダに保存されました。
+              分析結果のテキストファイルがダウンロードされました。
             </p>
           </div>
 
@@ -432,7 +444,7 @@ export default function Home() {
           </p>
 
           <p className="text-sm text-gray-500">
-            ブラウザを閉じても大丈夫です。結果はDriveに保存されています。
+            ダウンロードしたファイルを先生に提出してください。
           </p>
         </div>
       </div>
