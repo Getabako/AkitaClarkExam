@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Step, Answer, SessionState } from '@/types';
 import { getQuestionsByStep } from '@/lib/questions';
-import { googleDriveAPI } from '@/lib/googleDrive';
 
 const stepTitles: Record<Step, string> = {
   intro: 'はじめに',
@@ -37,19 +36,6 @@ export default function Home() {
   const [currentAnswers, setCurrentAnswers] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [driveReady, setDriveReady] = useState(false);
-
-  // Google Drive APIを初期化
-  useEffect(() => {
-    const initDrive = async () => {
-      // スクリプトがロードされるまで少し待つ
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const result = await googleDriveAPI.initialize();
-      setDriveReady(result);
-      console.log('Google Drive API ready:', result);
-    };
-    initDrive();
-  }, []);
 
   const handleNameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,29 +151,35 @@ export default function Home() {
     setIsLoading(false);
   };
 
-  const handleSaveToDrive = async () => {
+  const handleSendResult = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      // クライアントサイドでGoogle Drive APIを使用
-      const result = await googleDriveAPI.saveAnalysisToStudentFolder(
-        session.studentName,
-        {
-          values: session.stepAnalysis.values,
-          talents: session.stepAnalysis.talents,
-          passion: session.stepAnalysis.passion,
-          final: session.stepAnalysis.final,
-        }
-      );
+      const response = await fetch('/api/send-result', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentName: session.studentName,
+          analysis: {
+            values: session.stepAnalysis.values,
+            talents: session.stepAnalysis.talents,
+            passion: session.stepAnalysis.passion,
+            final: session.stepAnalysis.final,
+          },
+          imageUrl: session.generatedImage,
+        }),
+      });
 
-      if (result.success) {
+      const data = await response.json();
+
+      if (response.ok) {
         setSession(prev => ({ ...prev, currentStep: 'firstAction' }));
       } else {
-        throw new Error('保存に失敗しました');
+        throw new Error(data.error || '送信に失敗しました');
       }
     } catch (err) {
-      console.error('Drive save error:', err);
-      setError(err instanceof Error ? err.message : '保存中にエラーが発生しました。Googleアカウントでログインしてください。');
+      console.error('Send result error:', err);
+      setError(err instanceof Error ? err.message : '送信中にエラーが発生しました');
     } finally {
       setIsLoading(false);
     }
@@ -347,11 +339,11 @@ export default function Home() {
             )}
 
             <button
-              onClick={handleSaveToDrive}
+              onClick={handleSendResult}
               disabled={isLoading}
               className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
             >
-              結果を保存して次へ進む
+              結果を送信して次へ進む
             </button>
           </div>
         </div>
@@ -373,7 +365,7 @@ export default function Home() {
 
           <div className="bg-[#01654d]/10 border-l-4 border-[#01654d] p-4 mb-8 rounded-r-lg">
             <p className="text-[#01654d]">
-              分析結果はGoogle Driveの「{session.studentName}」フォルダに保存されました。
+              分析結果は先生にメールで送信されました。
             </p>
           </div>
 
@@ -441,7 +433,7 @@ export default function Home() {
           </p>
 
           <p className="text-sm text-gray-500">
-            ブラウザを閉じても大丈夫です。結果はDriveに保存されています。
+            ブラウザを閉じても大丈夫です。結果は先生に届いています。
           </p>
         </div>
       </div>
