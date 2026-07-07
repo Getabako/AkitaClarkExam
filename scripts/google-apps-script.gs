@@ -54,7 +54,8 @@ function doPost(e) {
       answerMap[a.questionId] = a.answer || '';
     });
 
-    var timestamp = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
+    // timestampが指定されていればそれを使う（過去分の遡り登録用）
+    var timestamp = data.timestamp || Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm:ss');
     var analysis = data.analysis || {};
 
     var row = [timestamp, data.studentName || ''];
