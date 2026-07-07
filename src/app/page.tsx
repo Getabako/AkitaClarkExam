@@ -349,6 +349,10 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentName: session.studentName,
+          answers: session.answers.map(a => {
+            const q = questions.find(q => q.id === a.questionId);
+            return { questionId: a.questionId, question: q?.question || '', answer: a.answer };
+          }),
           analysis: {
             values: session.stepAnalysis.values,
             talents: session.stepAnalysis.talents,

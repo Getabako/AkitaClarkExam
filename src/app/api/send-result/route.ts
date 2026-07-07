@@ -4,8 +4,48 @@ import { Resend } from 'resend';
 // 送信先メールアドレス
 const RECIPIENT_EMAIL = 'ifjuku@gmail.com';
 
+interface AnswerWithQuestion {
+  questionId: string;
+  question: string;
+  answer: string;
+}
+
+// Google Apps Script経由でスプレッドシートに記録
+async function saveToSpreadsheet(payload: {
+  studentName: string;
+  answers: AnswerWithQuestion[];
+  analysis: { values?: string; talents?: string; passion?: string; final?: string };
+  firstAction: string;
+  supportPreferenceLabel: string;
+  imageUrl: string;
+}): Promise<boolean> {
+  const webhookUrl = process.env.GAS_WEBHOOK_URL;
+  if (!webhookUrl) {
+    console.warn('GAS_WEBHOOK_URL is not configured; skipping spreadsheet save');
+    return false;
+  }
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+    if (!response.ok) {
+      console.error('Spreadsheet save failed:', response.status, await response.text());
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Spreadsheet save error:', error);
+    return false;
+  }
+}
+
 // 画像URLをBase64に変換
 async function imageUrlToBase64(url: string): Promise<string | null> {
+  // すでにdata URLの場合はそのまま使う
+  if (url.startsWith('data:')) return url;
   try {
     const response = await fetch(url);
     if (!response.ok) return null;
@@ -29,7 +69,19 @@ export async function POST(request: NextRequest) {
     }
     const resend = new Resend(apiKey);
 
-    const { studentName, analysis, imageUrl, firstAction, supportPreferenceLabel } = await request.json();
+    const { studentName, analysis, imageUrl, firstAction, supportPreferenceLabel, answers } = await request.json();
+
+    // スプレッドシートへ記録（失敗してもメール送信は続行）
+    const sheetSaved = await saveToSpreadsheet({
+      studentName,
+      answers: answers || [],
+      analysis,
+      firstAction,
+      supportPreferenceLabel,
+      // data URLはシートのセル上限を超えるため記録しない
+      imageUrl: imageUrl && !imageUrl.startsWith('data:') ? imageUrl : '',
+    });
+    console.log('Spreadsheet saved:', sheetSaved);
 
     // 画像をBase64に変換
     const imageBase64 = imageUrl ? await imageUrlToBase64(imageUrl) : null;
