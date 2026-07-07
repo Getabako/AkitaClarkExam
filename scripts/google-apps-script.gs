@@ -33,8 +33,7 @@ var HEADERS = [
   '情熱の分析',
   '総合分析（やりたいこと）',
   'ファーストアクション',
-  '今後の関わり方',
-  '画像URL'
+  '今後の関わり方'
 ];
 
 function doPost(e) {
@@ -66,10 +65,9 @@ function doPost(e) {
       analysis.values || '',
       analysis.talents || '',
       analysis.passion || '',
-      (analysis.final || '').split('===画像プロンプト===')[0].trim(),
+      (analysis.final || '').trim(),
       data.firstAction || '',
-      data.supportPreferenceLabel || '',
-      data.imageUrl || ''
+      data.supportPreferenceLabel || ''
     );
 
     sheet.appendRow(row);

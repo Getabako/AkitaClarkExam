@@ -309,30 +309,9 @@ export default function Home() {
     const finalAnalysis = await analyzeStep('final');
 
     if (finalAnalysis) {
-      const imagePromptMatch = finalAnalysis.match(/===画像プロンプト===\s*([\s\S]*?)$/);
-      const imagePrompt = imagePromptMatch ? imagePromptMatch[1].trim() : '';
-
-      let imageUrl = '';
-      if (imagePrompt) {
-        try {
-          const imageResponse = await fetch('/api/generate-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: imagePrompt }),
-          });
-          if (imageResponse.ok) {
-            const imageData = await imageResponse.json();
-            imageUrl = imageData.imageUrl;
-          }
-        } catch (err) {
-          console.error('Image generation failed:', err);
-        }
-      }
-
       setSession(prev => ({
         ...prev,
         stepAnalysis: { ...prev.stepAnalysis, final: finalAnalysis },
-        generatedImage: imageUrl,
         currentStep: 'result',
       }));
     }
@@ -359,7 +338,6 @@ export default function Home() {
             passion: session.stepAnalysis.passion,
             final: session.stepAnalysis.final,
           },
-          imageUrl: session.generatedImage,
           firstAction: firstActionInput,
           supportPreference: supportPreference,
           supportPreferenceLabel: getSupportPreferenceLabel(supportPreference || undefined),
@@ -761,20 +739,6 @@ export default function Home() {
                 <AnalysisWithClark text={mainAnalysis} isDark={true} />
               </div>
             </div>
-
-            {session.generatedImage && (
-              <div className="mb-8">
-                <h3 className="font-bold text-gray-800 mb-4 text-center text-lg">あなたの未来のビジョン</h3>
-                <div className="flex justify-center">
-                  <img
-                    src={session.generatedImage}
-                    alt="Generated vision"
-                    className="rounded-2xl shadow-xl max-w-full h-auto border-4 border-white"
-                    style={{ maxHeight: '400px' }}
-                  />
-                </div>
-              </div>
-            )}
 
             <button
               onClick={() => setSession(prev => ({ ...prev, currentStep: 'firstAction' }))}

@@ -17,7 +17,6 @@ async function saveToSpreadsheet(payload: {
   analysis: { values?: string; talents?: string; passion?: string; final?: string };
   firstAction: string;
   supportPreferenceLabel: string;
-  imageUrl: string;
 }): Promise<boolean> {
   const webhookUrl = process.env.GAS_WEBHOOK_URL;
   if (!webhookUrl) {
@@ -42,25 +41,6 @@ async function saveToSpreadsheet(payload: {
   }
 }
 
-// 画像URLをBase64に変換
-async function imageUrlToBase64(url: string): Promise<string | null> {
-  // すでにdata URLの場合はそのまま使う
-  if (url.startsWith('data:')) return url;
-  try {
-    const response = await fetch(url);
-    if (!response.ok) return null;
-
-    const arrayBuffer = await response.arrayBuffer();
-    const base64 = Buffer.from(arrayBuffer).toString('base64');
-    const contentType = response.headers.get('content-type') || 'image/png';
-
-    return `data:${contentType};base64,${base64}`;
-  } catch (error) {
-    console.error('Failed to convert image to base64:', error);
-    return null;
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.RESEND_API_KEY;
@@ -69,7 +49,7 @@ export async function POST(request: NextRequest) {
     }
     const resend = new Resend(apiKey);
 
-    const { studentName, analysis, imageUrl, firstAction, supportPreferenceLabel, answers } = await request.json();
+    const { studentName, analysis, firstAction, supportPreferenceLabel, answers } = await request.json();
 
     // スプレッドシートへ記録（失敗してもメール送信は続行）
     const sheetSaved = await saveToSpreadsheet({
@@ -78,13 +58,8 @@ export async function POST(request: NextRequest) {
       analysis,
       firstAction,
       supportPreferenceLabel,
-      // data URLはシートのセル上限を超えるため記録しない
-      imageUrl: imageUrl && !imageUrl.startsWith('data:') ? imageUrl : '',
     });
     console.log('Spreadsheet saved:', sheetSaved);
-
-    // 画像をBase64に変換
-    const imageBase64 = imageUrl ? await imageUrlToBase64(imageUrl) : null;
     console.log('Sending results for:', studentName, 'Support preference:', supportPreferenceLabel);
 
     const timestamp = new Date().toLocaleDateString('ja-JP');
@@ -139,13 +114,6 @@ export async function POST(request: NextRequest) {
       <pre>${mainAnalysis || '未実施'}</pre>
     </div>
 
-    ${imageBase64 ? `
-    <div class="image-container">
-      <h3 style="color: #333;">ビジョン画像</h3>
-      <img src="${imageBase64}" alt="Generated vision">
-    </div>
-    ` : ''}
-
     <div class="section" style="border-left-color: #f59e0b; background: #fffbeb;">
       <h3 style="color: #d97706;">今日のファーストアクション</h3>
       <pre>${firstAction || '未入力'}</pre>
@@ -196,7 +164,6 @@ ${firstAction || '未入力'}
 ${supportPreferenceLabel || '未選択'}
 
 ================================================================================
-${imageBase64 ? `\n※ビジョン画像はHTML版メールでご確認ください` : ''}
 `;
 
     // メール送信

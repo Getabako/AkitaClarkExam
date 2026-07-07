@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import OpenAI from 'openai';
 
 interface AnswerWithQuestion {
   questionId: string;
@@ -7,13 +7,15 @@ interface AnswerWithQuestion {
   answer: string;
 }
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// DeepSeek API（OpenAI互換）
+const deepseek = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: 'https://api.deepseek.com',
+});
 
 export async function POST(request: NextRequest) {
   try {
     const { step, answers, previousAnalysis } = await request.json();
-
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     let prompt = '';
 
@@ -136,15 +138,14 @@ ${previousAnalysis.passion}
 
 ～今日からできる第一歩～
 （すぐに始められる具体的なアクションを1つ、30字以内で）
-
-===画像プロンプト===
-（この生徒の理想の未来を表現する画像の英語プロンプト、50語程度）
 `;
     }
 
-    const result = await model.generateContent(prompt);
-    const response = result.response;
-    const text = response.text();
+    const completion = await deepseek.chat.completions.create({
+      model: 'deepseek-chat',
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const text = completion.choices[0]?.message?.content || '';
 
     return NextResponse.json({ analysis: text });
   } catch (error) {
