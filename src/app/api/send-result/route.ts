@@ -17,6 +17,10 @@ async function saveToSpreadsheet(payload: {
   analysis: { values?: string; talents?: string; passion?: string; final?: string };
   firstAction: string;
   supportPreferenceLabel: string;
+  diagnosisType: string;
+  yaritaikoto: string;
+  status: string;
+  qaLog: string;
 }): Promise<boolean> {
   const webhookUrl = process.env.GAS_WEBHOOK_URL;
   if (!webhookUrl) {
@@ -49,15 +53,22 @@ export async function POST(request: NextRequest) {
     }
     const resend = new Resend(apiKey);
 
-    const { studentName, analysis, firstAction, supportPreferenceLabel, answers } = await request.json();
+    const {
+      studentName, analysis, firstAction, supportPreferenceLabel, answers,
+      diagnosisType, yaritaikoto, status, qaLog,
+    } = await request.json();
 
     // スプレッドシートへ記録（失敗してもメール送信は続行）
     const sheetSaved = await saveToSpreadsheet({
       studentName,
       answers: answers || [],
-      analysis,
+      analysis: analysis || {},
       firstAction,
       supportPreferenceLabel,
+      diagnosisType: diagnosisType || '',
+      yaritaikoto: yaritaikoto || '',
+      status: status || '',
+      qaLog: qaLog || '',
     });
     console.log('Spreadsheet saved:', sheetSaved);
     console.log('Sending results for:', studentName, 'Support preference:', supportPreferenceLabel);
@@ -94,9 +105,29 @@ export async function POST(request: NextRequest) {
     <p style="margin: 10px 0 0 0; opacity: 0.9;">${studentName} さん - ${timestamp}</p>
   </div>
   <div class="content">
+    <div class="section" style="border-left-color: #0ea5e9; background: #f0f9ff;">
+      <h3 style="color: #0369a1;">診断タイプ</h3>
+      <pre>${diagnosisType || '未記録'}${status ? `（ステータス: ${status}）` : ''}</pre>
+    </div>
+
+    ${yaritaikoto ? `
+    <div class="section" style="border-left-color: #16a34a; background: #f0fdf4;">
+      <h3 style="color: #15803d;">現時点の「やりたいこと」</h3>
+      <pre>${yaritaikoto}</pre>
+    </div>
+    ` : ''}
+
+    ${qaLog ? `
+    <div class="section">
+      <h3>今回の質問と回答</h3>
+      <pre>${qaLog}</pre>
+    </div>
+    ` : ''}
+
+    ${analysis?.values ? `
     <div class="section">
       <h3>【V】価値観の分析</h3>
-      <pre>${analysis.values || '未実施'}</pre>
+      <pre>${analysis.values}</pre>
     </div>
 
     <div class="section talents">
@@ -108,9 +139,10 @@ export async function POST(request: NextRequest) {
       <h3>【P】情熱の分析</h3>
       <pre>${analysis.passion || '未実施'}</pre>
     </div>
+    ` : ''}
 
     <div class="section final">
-      <h3>【総合分析】やりたいこと（V × T × P）</h3>
+      <h3>${analysis?.values ? '【総合分析】やりたいこと（V × T × P）' : '【分析結果】'}</h3>
       <pre>${mainAnalysis || '未実施'}</pre>
     </div>
 
@@ -133,10 +165,21 @@ export async function POST(request: NextRequest) {
 ================================================================================
 自己分析結果 - ${studentName}
 実施日: ${timestamp}
+診断タイプ: ${diagnosisType || '未記録'}${status ? `（ステータス: ${status}）` : ''}
 ================================================================================
+${yaritaikoto ? `
+【現時点の「やりたいこと」】
+${yaritaikoto}
 
+--------------------------------------------------------------------------------
+` : ''}${qaLog ? `
+【今回の質問と回答】
+${qaLog}
+
+--------------------------------------------------------------------------------
+` : ''}${analysis?.values ? `
 【価値観の分析】
-${analysis.values || '未実施'}
+${analysis.values}
 
 --------------------------------------------------------------------------------
 
@@ -149,8 +192,8 @@ ${analysis.talents || '未実施'}
 ${analysis.passion || '未実施'}
 
 --------------------------------------------------------------------------------
-
-【総合分析・やりたいことの導出】
+` : ''}
+【分析結果】
 ${mainAnalysis || '未実施'}
 
 --------------------------------------------------------------------------------

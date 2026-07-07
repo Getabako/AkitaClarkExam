@@ -1,5 +1,31 @@
 // 質問ステップの定義
-export type Step = 'intro' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'firstAction' | 'confirm' | 'complete';
+export type Step = 'intro' | 'branch' | 'deepQuestions' | 'deepResult' | 'values' | 'talents' | 'passion' | 'analysis' | 'result' | 'firstAction' | 'confirm' | 'complete';
+
+// 診断モード
+export type DiagnosisMode = 'vtp' | 'deep';
+
+// 過去の記録（シートから取得）
+export interface PastRecord {
+  timestamp: string;
+  name: string;
+  values: string;
+  talents: string;
+  passion: string;
+  final: string;
+  firstAction: string;
+  supportPreferenceLabel: string;
+  diagnosisType: string;
+  yaritaikoto: string;
+  status: string;
+  qaLog: string;
+}
+
+// 深掘り用の質問
+export interface DeepQuestion {
+  id: string;
+  question: string;
+  placeholder?: string;
+}
 
 // 意思表示の選択肢
 export type SupportPreference =
@@ -67,4 +93,11 @@ export interface SessionState {
   generatedImage?: string;
   firstAction?: string;
   supportPreference?: SupportPreference;
+  // 分岐・深掘り関連
+  mode?: DiagnosisMode;
+  foundChoice?: 'found' | 'not_found';
+  pastRecords?: PastRecord[];
+  deepQuestions?: DeepQuestion[];
+  deepAnalysis?: string;
+  yaritaikoto?: string;
 }

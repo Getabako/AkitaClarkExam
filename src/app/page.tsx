@@ -1,8 +1,51 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Step, Answer, SessionState, SupportPreference } from '@/types';
+import { Step, Answer, SessionState, SupportPreference, PastRecord, DeepQuestion } from '@/types';
 import { getQuestionsByStep, questions } from '@/lib/questions';
+
+// 初回・「見つかっている」向けの固定質問
+const FIXED_DEEP_QUESTIONS: DeepQuestion[] = [
+  {
+    id: 'd1',
+    question: 'あなたの「やりたいこと」は何ですか？できるだけ具体的に教えてください。',
+    placeholder: '例：ゲーム実況の動画を作って発信したい、イラストレーターになりたい など',
+  },
+  {
+    id: 'd2',
+    question: 'それについて、今どんなことをしていますか？どこまで進んでいますか？',
+    placeholder: '例：週末に動画を撮って編集の練習をしている、まだ何もできていない など',
+  },
+  {
+    id: 'd3',
+    question: 'これからどうやって発展させていけそうですか？やってみたいことはありますか？',
+    placeholder: '例：SNSに投稿して反応をもらいたい、コンテストに応募してみたい など',
+  },
+  {
+    id: 'd4',
+    question: 'それを将来の「生きる糧」（仕事や人生の軸）にするには、何が必要だと思いますか？',
+    placeholder: '例：技術をもっと磨く、収入につなげる方法を知る、仲間を見つける など',
+  },
+];
+
+// 過去記録をAIに渡す用のテキストにまとめる
+const buildPastSummary = (records: PastRecord[]): string => {
+  return records
+    .map((r, i) => {
+      const parts = [`■ 記録${i + 1}（${r.timestamp}）`];
+      if (r.diagnosisType) parts.push(`診断タイプ: ${r.diagnosisType}`);
+      if (r.status) parts.push(`ステータス: ${r.status}`);
+      if (r.yaritaikoto) parts.push(`やりたいこと: ${r.yaritaikoto}`);
+      if (r.values) parts.push(`価値観の分析: ${r.values.slice(0, 300)}`);
+      if (r.talents) parts.push(`才能の分析: ${r.talents.slice(0, 300)}`);
+      if (r.passion) parts.push(`情熱の分析: ${r.passion.slice(0, 300)}`);
+      if (r.final) parts.push(`分析結果: ${r.final.slice(0, 500)}`);
+      if (r.firstAction) parts.push(`前回決めたアクション: ${r.firstAction}`);
+      if (r.qaLog) parts.push(`前回のQ&A: ${r.qaLog.slice(0, 500)}`);
+      return parts.join('\n');
+    })
+    .join('\n\n');
+};
 
 // クラーク博士の考え中アニメーション
 const ClarkThinking = () => {
@@ -115,6 +158,9 @@ const AnalysisWithClark = ({ text, isDark = false }: { text: string; isDark?: bo
 
 const stepTitles: Record<Step, string> = {
   intro: 'はじめに',
+  branch: 'やりたいことについて',
+  deepQuestions: 'やりたいことを深掘りする',
+  deepResult: '深掘りの結果',
   values: 'STEP 1: 価値観を知る',
   talents: 'STEP 2: 才能を知る',
   passion: 'STEP 3: 情熱を知る',
@@ -140,6 +186,9 @@ const getSupportPreferenceLabel = (value: SupportPreference | undefined): string
 
 const stepDescriptions: Record<Step, string> = {
   intro: '',
+  branch: '',
+  deepQuestions: '',
+  deepResult: '',
   values: '価値観とは、自分が「どうありたいか」「どういう状態だと気持ちが良いか」という、行動の土台となるものです。',
   talents: '才能とは、自分にとっては当たり前で楽にできてしまうこと（天性の能力）です。後から身につけたスキルとは違います。',
   passion: '情熱とは、生産性や合理性を無視してでも惹きつけられる、個人的な興味関心です。',
@@ -206,12 +255,157 @@ export default function Home() {
   const [showAdditionalInput, setShowAdditionalInput] = useState<string | null>(null);
   const [firstActionInput, setFirstActionInput] = useState('');
   const [supportPreference, setSupportPreference] = useState<SupportPreference | null>(null);
+  const [deepAnswers, setDeepAnswers] = useState<Record<string, string>>({});
+  const [yaritaikotoInput, setYaritaikotoInput] = useState('');
+  const [isCheckingHistory, setIsCheckingHistory] = useState(false);
 
-  const handleNameSubmit = (e: React.FormEvent) => {
+  const handleNameSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (session.studentName.trim()) {
-      setSession(prev => ({ ...prev, currentStep: 'values' }));
+    if (!session.studentName.trim()) return;
+
+    // シートから同じ名前の過去記録を検索
+    setIsCheckingHistory(true);
+    let records: PastRecord[] = [];
+    try {
+      const res = await fetch('/api/history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: session.studentName }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        records = data.records || [];
+      }
+    } catch (err) {
+      console.error('History check failed:', err);
     }
+    setIsCheckingHistory(false);
+
+    setSession(prev => ({ ...prev, pastRecords: records, currentStep: 'branch' }));
+  };
+
+  // 「見つかっている / 見つかっていない」の選択
+  const handleBranchChoice = async (found: boolean) => {
+    const records = session.pastRecords || [];
+    const isRepeat = records.length > 0;
+
+    if (!isRepeat && !found) {
+      // 初回＆見つかっていない → 従来のVTP診断
+      setSession(prev => ({ ...prev, mode: 'vtp', foundChoice: 'not_found', currentStep: 'values' }));
+      return;
+    }
+
+    if (!isRepeat && found) {
+      // 初回＆見つかっている → 固定の深掘り質問
+      setSession(prev => ({
+        ...prev,
+        mode: 'deep',
+        foundChoice: 'found',
+        deepQuestions: FIXED_DEEP_QUESTIONS,
+        currentStep: 'deepQuestions',
+      }));
+      return;
+    }
+
+    // 2回目以降 → 前回の記録をもとにAIが質問を生成
+    setIsLoading(true);
+    setError(null);
+    setSession(prev => ({
+      ...prev,
+      mode: 'deep',
+      foundChoice: found ? 'found' : 'not_found',
+      currentStep: 'analysis',
+    }));
+
+    try {
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step: 'followup_questions',
+          pastSummary: buildPastSummary(records),
+          found,
+        }),
+      });
+      if (!res.ok) throw new Error('質問の生成に失敗しました');
+      const data = await res.json();
+      const qs: DeepQuestion[] = (data.questions || []).map((q: string, i: number) => ({
+        id: `f${i + 1}`,
+        question: q,
+      }));
+      if (qs.length === 0) throw new Error('質問の生成に失敗しました');
+
+      setSession(prev => ({ ...prev, deepQuestions: qs, currentStep: 'deepQuestions' }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'エラーが発生しました');
+      setSession(prev => ({ ...prev, currentStep: 'branch' }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 深掘り質問の回答を分析
+  const handleDeepSubmit = async () => {
+    const qs = session.deepQuestions || [];
+    const qa = qs.map(q => ({
+      questionId: q.id,
+      question: q.question,
+      answer: deepAnswers[q.id] || '',
+    }));
+
+    setIsLoading(true);
+    setError(null);
+    setSession(prev => ({ ...prev, currentStep: 'analysis' }));
+
+    try {
+      const isRepeat = (session.pastRecords || []).length > 0;
+      const step = session.foundChoice === 'found' ? 'deepdive' : 'explore_deep';
+
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          step,
+          answers: qa,
+          pastSummary: isRepeat ? buildPastSummary(session.pastRecords || []) : undefined,
+        }),
+      });
+      if (!res.ok) throw new Error('分析に失敗しました');
+      const data = await res.json();
+
+      // 「やりたいこと」の初期値：見つかっている場合は最初の質問の回答
+      if (session.foundChoice === 'found' && !yaritaikotoInput) {
+        setYaritaikotoInput(deepAnswers[qs[0]?.id] || '');
+      }
+
+      setSession(prev => ({ ...prev, deepAnalysis: data.analysis, currentStep: 'deepResult' }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '分析中にエラーが発生しました');
+      setSession(prev => ({ ...prev, currentStep: 'deepQuestions' }));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 深掘りQ&Aをシート記録用テキストにする
+  const buildQaLog = (): string => {
+    const qs = session.deepQuestions || [];
+    if (session.mode !== 'deep' || qs.length === 0) return '';
+    return qs
+      .map(q => `Q. ${q.question}\nA. ${deepAnswers[q.id] || '（未回答）'}`)
+      .join('\n\n');
+  };
+
+  // 診断タイプのラベル
+  const getDiagnosisType = (): string => {
+    const isRepeat = (session.pastRecords || []).length > 0;
+    if (session.mode === 'deep') {
+      if (session.foundChoice === 'found') {
+        return isRepeat ? '深掘り（2回目以降・見つかっている）' : '深掘り（初回・見つかっている）';
+      }
+      return 'やりたいこと探し（2回目以降・前回の続き）';
+    }
+    return 'やりたいこと探し（VTP診断・見つかっていない）';
   };
 
   const handleAnswerChange = (questionId: string, value: string) => {
@@ -328,19 +522,25 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           studentName: session.studentName,
-          answers: session.answers.map(a => {
+          answers: session.mode === 'deep' ? [] : session.answers.map(a => {
             const q = questions.find(q => q.id === a.questionId);
             return { questionId: a.questionId, question: q?.question || '', answer: a.answer };
           }),
-          analysis: {
-            values: session.stepAnalysis.values,
-            talents: session.stepAnalysis.talents,
-            passion: session.stepAnalysis.passion,
-            final: session.stepAnalysis.final,
-          },
+          analysis: session.mode === 'deep'
+            ? { final: session.deepAnalysis }
+            : {
+                values: session.stepAnalysis.values,
+                talents: session.stepAnalysis.talents,
+                passion: session.stepAnalysis.passion,
+                final: session.stepAnalysis.final,
+              },
           firstAction: firstActionInput,
           supportPreference: supportPreference,
           supportPreferenceLabel: getSupportPreferenceLabel(supportPreference || undefined),
+          diagnosisType: getDiagnosisType(),
+          yaritaikoto: yaritaikotoInput.trim(),
+          status: yaritaikotoInput.trim() ? '決定済み' : '探索中',
+          qaLog: buildQaLog(),
         }),
       });
 
@@ -503,11 +703,193 @@ export default function Home() {
             </div>
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg"
+              disabled={isCheckingHistory}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
             >
-              はじめる
+              {isCheckingHistory ? '記録を確認中...' : 'はじめる'}
             </button>
           </form>
+        </div>
+      </div>
+    );
+  }
+
+  // 分岐画面（やりたいことが見つかっているか）
+  if (session.currentStep === 'branch') {
+    const records = session.pastRecords || [];
+    const isRepeat = records.length > 0;
+    const latest = records[0];
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] flex items-center justify-center p-4">
+        <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10 max-w-2xl w-full">
+          <div className="text-center mb-8">
+            <h1 className="text-2xl font-bold text-[#004097]">
+              {isRepeat ? `おかえりなさい、${session.studentName}さん` : `${session.studentName}さん、最初の質問です`}
+            </h1>
+            <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
+          </div>
+
+          {isRepeat && latest && (
+            <div className="bg-[#004097]/5 border border-[#004097]/15 rounded-2xl p-5 mb-8">
+              <p className="text-sm font-bold text-[#004097] mb-2">前回の記録（{latest.timestamp.split(' ')[0]}）</p>
+              {latest.yaritaikoto ? (
+                <p className="text-gray-700 text-sm">やりたいこと：<span className="font-medium">{latest.yaritaikoto}</span></p>
+              ) : (
+                <p className="text-gray-700 text-sm">前回はやりたいことを探しているところでした。</p>
+              )}
+              {latest.firstAction && (
+                <p className="text-gray-600 text-sm mt-1">前回決めたアクション：{latest.firstAction}</p>
+              )}
+            </div>
+          )}
+
+          {error && (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
+              <p className="text-red-800">{error}</p>
+            </div>
+          )}
+
+          <p className="text-gray-700 text-lg font-medium mb-6 text-center">
+            {isRepeat
+              ? 'その後、「やりたいこと」は見つかりましたか？'
+              : 'あなたには今、「やりたいこと」がありますか？'}
+          </p>
+
+          <div className="space-y-4">
+            <button
+              onClick={() => handleBranchChoice(true)}
+              disabled={isLoading}
+              className="w-full p-5 rounded-xl border-2 border-[#01654d] bg-[#01654d]/5 hover:bg-[#01654d]/10 transition-all text-left disabled:opacity-50"
+            >
+              <p className="font-bold text-[#01654d] text-lg">見つかっている！</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {isRepeat
+                  ? 'やりたいことが決まっている・見つかった → さらに深掘りして次の一歩を考えます'
+                  : 'やりたいことがある → それを深掘りして、発展させる道筋を一緒に考えます'}
+              </p>
+            </button>
+            <button
+              onClick={() => handleBranchChoice(false)}
+              disabled={isLoading}
+              className="w-full p-5 rounded-xl border-2 border-[#004097] bg-[#004097]/5 hover:bg-[#004097]/10 transition-all text-left disabled:opacity-50"
+            >
+              <p className="font-bold text-[#004097] text-lg">まだ見つかっていない</p>
+              <p className="text-sm text-gray-600 mt-1">
+                {isRepeat
+                  ? '前回の記録をもとに、やりたいことを決められるよう一緒に考えます'
+                  : '価値観・才能・情熱の3つの視点から、やりたいことを一緒に見つけます'}
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 深掘り質問画面
+  if (session.currentStep === 'deepQuestions') {
+    const qs = session.deepQuestions || [];
+    const allAnswered = qs.every(q => (deepAnswers[q.id] || '').trim());
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] py-10 px-4">
+        <div className="max-w-2xl mx-auto">
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10">
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-[#004097] mb-3">
+                {session.foundChoice === 'found' ? 'やりたいことを深掘りしよう' : 'やりたいことを見つけよう'}
+              </h2>
+              <p className="text-gray-600 leading-relaxed">
+                {session.foundChoice === 'found'
+                  ? 'あなたの「やりたいこと」について教えてください。現状を整理して、発展させる道筋を一緒に考えます。'
+                  : '前回の記録をもとにした質問です。思いつくままに答えてみてください。'}
+              </p>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
+                <p className="text-red-800">{error}</p>
+              </div>
+            )}
+
+            <div className="space-y-8">
+              {qs.map((q, index) => (
+                <div key={q.id} className="space-y-3">
+                  <label className="block text-gray-800 font-medium text-lg">
+                    Q{index + 1}. {q.question}
+                  </label>
+                  <textarea
+                    value={deepAnswers[q.id] || ''}
+                    onChange={e => setDeepAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                    className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#004097] focus:border-[#004097] min-h-[120px] text-gray-900 transition-all resize-none"
+                    placeholder={q.placeholder || '思いつくままに書いてみてください'}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-10">
+              <button
+                onClick={handleDeepSubmit}
+                disabled={!allAnswered || isLoading}
+                className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg disabled:opacity-50"
+              >
+                クラーク博士に相談する
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 深掘り結果画面
+  if (session.currentStep === 'deepResult') {
+    const qs = session.deepQuestions || [];
+
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-[#004097] to-[#01654d] py-10 px-4">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white/95 backdrop-blur rounded-3xl shadow-2xl p-10">
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-[#004097]">
+                {session.studentName}さんの深掘り結果
+              </h1>
+              <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
+                <p className="text-red-800">{error}</p>
+              </div>
+            )}
+
+            {/* あなたの回答 */}
+            <div className="bg-white rounded-lg p-4 mb-6 border border-[#004097]/20">
+              <p className="text-xs text-gray-500 mb-2 font-medium">あなたの回答：</p>
+              <div className="space-y-2">
+                {qs.map((q, i) => (
+                  <div key={q.id} className="text-sm">
+                    <p className="text-gray-500 text-xs">Q{i + 1}. {q.question}</p>
+                    <p className="text-gray-800 bg-gray-50 p-2 rounded mt-1">{deepAnswers[q.id] || '（未回答）'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-xs text-gray-500 mb-2 font-medium">クラーク博士の分析：</p>
+            <div className="bg-[#004097]/5 rounded-2xl p-6 border border-[#004097]/10 mb-8">
+              <AnalysisWithClark text={session.deepAnalysis || ''} />
+            </div>
+
+            <button
+              onClick={() => setSession(prev => ({ ...prev, currentStep: 'firstAction' }))}
+              className="w-full bg-gradient-to-r from-[#004097] to-[#01654d] text-white py-4 px-6 rounded-xl hover:opacity-90 transition-all font-medium text-lg shadow-lg"
+            >
+              次へ進む
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -765,6 +1147,24 @@ export default function Home() {
               <div className="w-20 h-1 bg-gradient-to-r from-[#004097] to-[#01654d] mx-auto mt-4 rounded-full"></div>
             </div>
 
+            {/* やりたいこと（ブラッシュアップ） */}
+            <div className="mb-10">
+              <h2 className="text-lg font-bold text-gray-800 mb-2">
+                今の時点での「やりたいこと」
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">
+                {session.foundChoice === 'found'
+                  ? '分析を踏まえて、自分の言葉で書き直して（ブラッシュアップして）OKです。'
+                  : '今日の結果を見て「これかも」と思えるものがあれば書いてください。まだ無くても大丈夫です。'}
+              </p>
+              <textarea
+                value={yaritaikotoInput}
+                onChange={e => setYaritaikotoInput(e.target.value)}
+                className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-[#01654d] focus:border-[#01654d] min-h-[80px] text-gray-900 transition-all resize-none"
+                placeholder={session.foundChoice === 'found' ? '例：ゲーム実況動画を作って発信する' : '（まだ決まっていなければ空欄でOK）'}
+              />
+            </div>
+
             {/* ファーストアクション */}
             <div className="mb-10">
               <h2 className="text-lg font-bold text-gray-800 mb-2">
@@ -857,6 +1257,12 @@ export default function Home() {
             </p>
 
             <div className="space-y-6 mb-8">
+              {/* やりたいこと */}
+              <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                <h3 className="font-bold text-gray-800 mb-2">今の時点での「やりたいこと」</h3>
+                <p className="text-gray-700 whitespace-pre-wrap">{yaritaikotoInput.trim() || '（まだ探索中）'}</p>
+              </div>
+
               {/* ファーストアクション */}
               <div className="bg-gray-50 rounded-xl p-5 border border-gray-200">
                 <h3 className="font-bold text-gray-800 mb-2">今日のファーストアクション</h3>
